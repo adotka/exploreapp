@@ -7,6 +7,10 @@
 |------|----------|---------------|------|
 | 2026-07-07 | Бенвенуто Челлини | Мариинский театр / Мариинский-2 | [items/2026-07-07_mariinsky_benvenuto-chellini.md](../items/2026-07-07_mariinsky_benvenuto-chellini.md) |
 | 2026-07-06 | Лакме | Мариинский театр / Концертный зал | [items/2026-07-06_mariinsky_lakme.md](../items/2026-07-06_mariinsky_lakme.md) |
+| 2024-08-06 | Гибель богов | Мариинский театр / Мариинский-2 | [items/2024-08-06_mariinsky_gibel-bogov.md](../items/2024-08-06_mariinsky_gibel-bogov.md) |
+| 2024-08-04 | Зигфрид | Мариинский театр / Мариинский-2 | [items/2024-08-04_mariinsky_zigfrid.md](../items/2024-08-04_mariinsky_zigfrid.md) |
+| 2024-08-02 | Валькирия | Мариинский театр / Мариинский-2 | [items/2024-08-02_mariinsky_valkiriya.md](../items/2024-08-02_mariinsky_valkiriya.md) |
+| 2024-08-01 | Золото Рейна | Мариинский театр / Мариинский-2 | [items/2024-08-01_mariinsky_zoloto-reina.md](../items/2024-08-01_mariinsky_zoloto-reina.md) |
 
 <!-- Provisional: акты, ещё не оформленные полноценным файлом в items/, фиксируются строкой
      ниже (что известно), затем повышаются до файла. -->
