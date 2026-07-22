@@ -1,0 +1,9 @@
+# Raw exports from external systems may embed secrets — only sanitized copies are tracked
+# (see AGENTS.md, Key Conventions)
+*_raw.*
+**/raw/
+
+# Local-only task view folders — uncomment when the A2 organ is built (see GROWTH.md A2)
+#/open/
+#/done/
+#/deferred/
