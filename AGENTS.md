@@ -36,8 +36,11 @@ MindHorizon/
 ├── kb/                     # Distilled durable facts (env-specific notes, one topic per file)
 ├── inventory/              # Source of truth for the external estate (registry, address plans, topology)
 ├── items/                  # Per-Items files (one .md each)
-│   └── _template.md
+│   ├── _template.md
+│   └── _template_performance.md     # schema for theatrical acts
+├── playbills/              # Source scans of playbills (evidence layer; referenced from items/)
 └── helpers/                # Scripts and tools (added when the growth trigger fires)
+                            # build_site.py generates the site (_site/, gitignored) from items/
 ```
 
 This structure is **deliberately minimal**. New organs (task tracking, lint gate, view folders,

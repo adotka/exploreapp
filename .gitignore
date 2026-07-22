@@ -3,6 +3,9 @@
 *_raw.*
 **/raw/
 
+# Generated site — view of items/, built by helpers/build_site.py; never edit or commit
+/_site/
+
 # Local-only task view folders — uncomment when the A2 organ is built (see GROWTH.md A2)
 #/open/
 #/done/
