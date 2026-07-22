@@ -16,7 +16,7 @@ into the archive. Runs inside a normal session (runbook/session.md).
    - Remove unused placeholder lines; the generator ignores anything still wrapped in `<>`.
 3. **Update registries:** add a row to `inventory/performances.md`; update
    `inventory/venues.md` only for a new theatre or scene.
-4. **Verify locally:** `python3 helpers/build_site.py` and check the new pages and links in
-   `_site/` (open `_site/index.html` in a browser).
+4. **Verify locally:** `python3 helpers/build_site.py`, then `python3 helpers/check_links.py`
+   (fails on any broken internal link); spot-check the new pages in `_site/`.
 5. **Close the session normally** — commit message `<theatre-or-subject>: <topic>`. The push
    to `main` rebuilds and redeploys the site automatically (see runbook/site.md).
