@@ -39,6 +39,7 @@ MindHorizon/
 │   ├── _template.md
 │   └── _template_performance.md     # schema for theatrical acts
 ├── playbills/              # Source scans of playbills (evidence layer; referenced from items/)
+├── bot/                    # Telegram ingestion bot (Cloudflare Worker) — see runbook/bot.md
 └── helpers/                # Scripts and tools (added when the growth trigger fires)
                             # build_site.py generates the site (_site/, gitignored) from items/
 ```
@@ -80,6 +81,11 @@ Never build structure ahead of the pain that justifies it.
   file, get a plain-text row in the inventory describing what's known. Promote to a full unit
   file once identified or once it needs its own record.
 - Raw exports from external systems are never edited; sanitized copies are safe for sharing.
+- **Automated (bot) commits.** The Telegram bot (bot/, runbook/bot.md) may commit **project
+  data only** (items/, inventory/, playbills/) — never project mind, never sessions — and only
+  after the operator confirms the specific content (per P-operator-confirms-automated-writes).
+  Bot commits are prefixed `bot:` and carry no session log; the commit itself is the record.
+  The next human session's retrospective covers accumulated bot ingestions.
 
 ---
 

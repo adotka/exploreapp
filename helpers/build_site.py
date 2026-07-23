@@ -11,9 +11,11 @@
 
 import argparse
 import html
+import json
 import re
 import shutil
 import sys
+from datetime import date
 from collections import defaultdict
 from pathlib import Path
 
@@ -388,6 +390,25 @@ def build(items_dir: Path, out_dir: Path) -> int:
             parts.append(f"<h2>{title}</h2>" + perf_table(root, unscoped))
         (out_dir / "sceny" / f"{slugify(theatre)}.html").write_text(
             page(root, theatre, "sceny/index.html", "\n".join(parts)), encoding="utf-8")
+
+    # Машинный индекс — его читает телеграм-бот (bot/worker.js) для функции
+    # «вы уже встречали»: люди сопоставляются по точному совпадению имени.
+    (out_dir / "data").mkdir(exist_ok=True)
+    index = {
+        "generated": date.today().isoformat(),
+        "performances": [
+            {"slug": p.slug, "title": p.title, "date": p.date, "genre": p.genre,
+             "theatre": p.theatre, "scene": p.scene}
+            for p in perfs
+        ],
+        "people": {
+            name: [{"role": role, "title": p.title, "date": p.date, "slug": p.slug}
+                   for role, p in entries]
+            for name, entries in sorted(people.items())
+        },
+    }
+    (out_dir / "data" / "index.json").write_text(
+        json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
 
     print(f"Собрано: {len(perfs)} спектаклей, {len(people)} людей, "
           f"{len(works)} произведений, {len(theatres)} театров → {out_dir}/")

@@ -31,6 +31,26 @@ helpers, discovery flows) so retired items drop out of active views but remain r
 
 *(Ratified 2026-07-22 by the operator, at project genesis.)*
 
+## P-operator-confirms-automated-writes
+
+**Rule:** No automated writer commits to the archive without explicit operator confirmation of
+the specific content being written.
+
+**Why:** Automated ingestion (LLM parsing of scans, pages, free text) is fallible; a silent
+mistake pollutes the source of truth and propagates to every generated view. A cheap
+confirmation step at write time preserves data quality without giving up automation — the
+miniature of this project's own retrospective gate.
+
+**How to apply:** Any automation that writes to the repo (today: the Telegram bot; tomorrow:
+anything else) must show the operator the concrete parsed content and receive an explicit
+per-item confirmation (e.g. an inline-button tap) before committing. Blanket pre-approval of a
+category of writes does not satisfy this principle.
+
+**Known exceptions:** none. (The site deploy workflow is not a writer — it only transforms
+already-confirmed data into views.)
+
+*(Ratified 2026-07-23 by the operator, with the first automated writer.)*
+
 ---
 
 *Amend deliberately: change a principle here (with rationale + date) rather than carving silent
