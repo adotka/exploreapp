@@ -74,6 +74,20 @@ a.recurring { font-weight: 700; }
 .count { color: var(--muted); font-size: 0.82em; margin-left: 0.15em; }
 .filter-row { margin: 0 0 1rem; }
 .filter-row label { cursor: pointer; }
+a.has-tip { position: relative; }
+a.has-tip .tip {
+  display: none; position: absolute; left: 0; bottom: 100%; margin-bottom: 0.4rem;
+  z-index: 10; background: var(--accent-bg); border: 1px solid var(--line);
+  border-radius: 0.4rem; padding: 0.5rem 0.6rem; width: max-content; max-width: 16rem;
+  font-weight: normal; font-size: 0.85rem; color: var(--fg);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+a.has-tip:hover .tip, a.has-tip:focus .tip { display: block; }
+a.has-tip .tip img { display: block; width: 64px; height: 64px; object-fit: cover;
+                      border-radius: 0.3rem; margin-bottom: 0.35rem; }
+.profile { display: flex; gap: 1rem; align-items: flex-start; margin: 1rem 0; }
+.profile .portrait { width: 120px; height: 120px; object-fit: cover; border-radius: 0.5rem; flex: none; }
+.profile p { margin: 0; }
 """
 
 NAV = [
@@ -203,6 +217,28 @@ def load_performances(items_dir: Path):
     return perfs
 
 
+def load_people_profiles(people_dir: Path):
+    """people/*.md — необязательные профили (био/фото) для людей, встреченных повторно."""
+    profiles = {}
+    if not people_dir.is_dir():
+        return profiles
+    for path in sorted(people_dir.glob("*.md")):
+        if path.name.startswith("_"):
+            continue
+        fields, _sections = parse_item(path)
+        if fields.get("Type") != "person":
+            continue
+        name = fields.get("Имя", "").strip()
+        if not name:
+            continue
+        profiles[name] = {
+            "photo": fields.get("Фото", "").strip(),
+            "short_bio": fields.get("Коротко", "").strip(),
+            "bio": fields.get("Био", "").strip(),
+        }
+    return profiles
+
+
 def page(root: str, title: str, active: str, body: str) -> str:
     nav_parts = []
     for href, label in NAV:
@@ -231,15 +267,25 @@ def page(root: str, title: str, active: str, body: str) -> str:
 """
 
 
-def link_person(root, name, count=None):
-    cls = ' class="recurring"' if count and count > 1 else ""
-    return f'<a href="{root}lyudi/{slugify(name)}.html"{cls}>{esc(name)}</a>'
+def link_person(root, name, count=None, profiles=None):
+    cls_parts = []
+    tip = ""
+    if count and count > 1:
+        cls_parts.append("recurring")
+        profile = (profiles or {}).get(name)
+        if profile and (profile.get("photo") or profile.get("short_bio")):
+            cls_parts.append("has-tip")
+            img = f'<img src="{root}{esc(profile["photo"])}" alt="">' if profile.get("photo") else ""
+            text = f'<span class="tip-text">{esc(profile["short_bio"])}</span>' if profile.get("short_bio") else ""
+            tip = f'<span class="tip">{img}{text}</span>'
+    cls = f' class="{" ".join(cls_parts)}"' if cls_parts else ""
+    return f'<a href="{root}lyudi/{slugify(name)}.html"{cls}>{esc(name)}{tip}</a>'
 
 
-def person_ref(root, name, people):
+def person_ref(root, name, people, profiles=None):
     """Ссылка на человека + бейдж числа встреч, если их больше одной (списки на странице спектакля)."""
     count = len(people.get(name, []))
-    link = link_person(root, name, count)
+    link = link_person(root, name, count, profiles)
     return f'{link} <span class="count">×{count}</span>' if count > 1 else link
 
 
@@ -284,6 +330,7 @@ def render_impressions(text: str) -> str:
 
 def build(items_dir: Path, out_dir: Path) -> int:
     perfs = load_performances(items_dir)
+    profiles = load_people_profiles(items_dir.parent / "people")
 
     people = defaultdict(list)   # имя -> [(роль, perf)]
     works = defaultdict(list)    # название -> [perf]
@@ -310,6 +357,11 @@ def build(items_dir: Path, out_dir: Path) -> int:
     if playbills.is_dir():
         shutil.copytree(playbills, out_dir / "playbills", dirs_exist_ok=True)
 
+    # Фото людей (people/photos/) — миниатюры для карточек и подсказок при наведении
+    people_photos = items_dir.parent / "people" / "photos"
+    if people_photos.is_dir():
+        shutil.copytree(people_photos, out_dir / "people" / "photos", dirs_exist_ok=True)
+
     # Главная — хронология спектаклей
     if perfs:
         body = f"<h1>Спектакли</h1><p class=\"meta\">Всего: {len(perfs)}</p>" + perf_table("", perfs)
@@ -328,7 +380,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
             facts.append(("Жанр", esc(p.genre)))
         if p.author and not p.program:
             author_name = clean_name(p.author)
-            facts.append(("Автор", link_person(root, author_name, len(people.get(author_name, [])))))
+            facts.append(("Автор", link_person(root, author_name, len(people.get(author_name, [])), profiles)))
         if p.theatre:
             venue = link_theatre(root, p.theatre)
             if p.scene:
@@ -356,18 +408,18 @@ def build(items_dir: Path, out_dir: Path) -> int:
                 f"<dl>{dl}</dl>"]
         if p.program:
             rows = "".join(
-                f"<li>{person_ref(root, author, people)} — "
+                f"<li>{person_ref(root, author, people, profiles)} — "
                 f"{link_work(root, title, len(works.get(title, [])))}</li>"
                 for author, title in p.program)
             body.append(f'<h2>Программа</h2><ul class="plain">{rows}</ul>')
         if p.staff:
             rows = "".join(
-                f"<li>{esc(role)} — " + ", ".join(person_ref(root, n, people) for n in names) + "</li>"
+                f"<li>{esc(role)} — " + ", ".join(person_ref(root, n, people, profiles) for n in names) + "</li>"
                 for role, names in p.staff)
             body.append(f'<h2>Постановщики</h2><ul class="plain">{rows}</ul>')
         if p.cast:
             rows = "".join(
-                f"<li>{esc(role)} — " + ", ".join(person_ref(root, n, people) for n in names) + "</li>"
+                f"<li>{esc(role)} — " + ", ".join(person_ref(root, n, people, profiles) for n in names) + "</li>"
                 for role, names in p.cast)
             body.append(f'<h2>Состав</h2><ul class="plain">{rows}</ul>')
         if p.impressions:
@@ -379,7 +431,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
     root = "../"
     if people:
         rows = "".join(
-            f'<li data-count="{len(entries)}">{link_person("", name, len(entries))} '
+            f'<li data-count="{len(entries)}">{link_person(root, name, len(entries), profiles)} '
             f'<span class="meta">({len(entries)})</span></li>'
             for name, entries in sorted(people.items()))
         filter_ui = (
@@ -405,13 +457,19 @@ def build(items_dir: Path, out_dir: Path) -> int:
     else:
         body = '<h1>Люди</h1><p class="empty">Пока никого — люди появятся из программок.</p>'
     (out_dir / "lyudi" / "index.html").write_text(
-        page(root, "Люди", "lyudi/index.html", body.replace('href="lyudi/', 'href="')), encoding="utf-8")
+        page(root, "Люди", "lyudi/index.html", body), encoding="utf-8")
     for name, entries in people.items():
         items = "".join(
             f"<li>{esc(role)} — {link_perf(root, p)} "
             f"<span class=\"meta\">({esc(p.date)}, {esc(p.venue_label)})</span></li>"
             for role, p in sorted(entries, key=lambda e: e[1].date, reverse=True))
-        body = f'<h1>{esc(name)}</h1><ul class="plain">{items}</ul>'
+        profile = profiles.get(name)
+        header = ""
+        if profile and (profile.get("photo") or profile.get("bio")):
+            img = f'<img class="portrait" src="{root}{esc(profile["photo"])}" alt="{esc(name)}">' if profile.get("photo") else ""
+            bio = f'<p>{esc(profile["bio"])}</p>' if profile.get("bio") else ""
+            header = f'<div class="profile">{img}{bio}</div>'
+        body = f'<h1>{esc(name)}</h1>{header}<ul class="plain">{items}</ul>'
         (out_dir / "lyudi" / f"{slugify(name)}.html").write_text(
             page(root, name, "lyudi/index.html", body), encoding="utf-8")
 
@@ -437,7 +495,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
         meta = ""
         if authors:
             meta = ('<p class="meta">Автор: '
-                    + ", ".join(link_person(root, a, len(people.get(a, []))) for a in authors) + "</p>")
+                    + ", ".join(link_person(root, a, len(people.get(a, [])), profiles) for a in authors) + "</p>")
         body = f"<h1>{esc(title)}</h1>{meta}" + perf_table(root, ps)
         (out_dir / "proizvedeniya" / f"{slugify(title)}.html").write_text(
             page(root, title, "proizvedeniya/index.html", body), encoding="utf-8")

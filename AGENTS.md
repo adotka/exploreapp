@@ -45,6 +45,9 @@ reviews; amend a principle deliberately in that file rather than carving silent 
 │   ├── _template.md
 │   └── _template_performance.md     # schema for theatrical acts
 ├── playbills/              # Source scans of playbills (evidence layer; referenced from items/)
+├── people/                 # Optional profiles (bio/photo) for people met more than once
+│   ├── _template.md
+│   └── photos/             # Small ID-only thumbnails, not full-resolution photos
 ├── bot/                    # Telegram ingestion bot (Cloudflare Worker) — see runbook/bot.md
 └── helpers/                # Scripts and tools (added when the growth trigger fires)
                             # build_site.py generates the site (_site/, gitignored) from items/

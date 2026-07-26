@@ -671,14 +671,22 @@ async function confirmIngest(env, cb) {
   await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Добавлено ✅" });
 
   let known = [];
+  let newlyRecurring = [];
   try {
     const index = await (await fetch(`${env.SITE_URL}/data/index.json`, { cf: { cacheTtl: 60 } })).json();
     known = knownPeopleLines(index, peopleOf(p));
+    // Индекс отражает состояние ДО этого коммита — ровно 1 запись значит, что после
+    // добавления текущего спектакля человек станет повторным впервые.
+    newlyRecurring = peopleOf(p).filter((name) => (index.people?.[name]?.length || 0) === 1);
   } catch (e) { /* индекс ещё не опубликован — не критично */ }
+
+  const recurringNote = newlyRecurring.length
+    ? `\n\n👤 Впервые повторно: ${newlyRecurring.join(", ")} — стоит собрать био/фото (см. people/_template.md).`
+    : "";
 
   await tg(env, "editMessageText", {
     chat_id: cb.message.chat.id, message_id: cb.message.message_id,
-    text: preview(p, known) + `\n\n✅ Добавлено в архив. Сайт пересоберётся через ~1 мин: ${env.SITE_URL}/`,
+    text: preview(p, known) + `\n\n✅ Добавлено в архив. Сайт пересоберётся через ~1 мин: ${env.SITE_URL}/` + recurringNote,
     parse_mode: "HTML",
   });
 }
