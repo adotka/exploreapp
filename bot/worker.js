@@ -852,31 +852,40 @@ async function handlePhoto(env, chatId, message) {
  * займётся тот вызов, что окажется последним).
  */
 async function handlePhotoGroup(env, chatId, message) {
-  const key = `mg:${message.media_group_id}`;
+  // Каждая страница пишется в СВОЙ ключ (по message_id, уникален и монотонен в пределах
+  // альбома) — не в общий JSON-блоб. KV не даёт атомарного read-modify-write: если бы все
+  // страницы читали-дополняли-писали один и тот же список, две почти одновременные
+  // страницы могли бы обе прочитать пустой список до того, как другая успеет его
+  // записать, и одна запись перезатирала бы другую (потерянное обновление) — именно это
+  // и произошло: каждый вызов видел список из одной страницы и считал себя последним.
+  const prefix = `mg:${message.media_group_id}:`;
+  const myId = message.message_id;
   const sizes = message.photo;
   const fileId = sizes[sizes.length - 1].file_id;
-
-  const raw = await env.PENDING.get(key);
-  const items = raw ? JSON.parse(raw) : [];
-  items.push({ fileId, caption: message.caption || "" });
-  await env.PENDING.put(key, JSON.stringify(items), { expirationTtl: 60 });
-  const myCount = items.length;
+  await env.PENDING.put(`${prefix}${myId}`, JSON.stringify({ fileId, caption: message.caption || "" }), { expirationTtl: 60 });
 
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  const raw2 = await env.PENDING.get(key);
-  const current = raw2 ? JSON.parse(raw2) : [];
-  if (current.length !== myCount) return; // подошли ещё страницы — обработает более поздний вызов
+  const listing = await env.PENDING.list({ prefix });
+  const ids = listing.keys.map((k) => parseInt(k.name.slice(prefix.length), 10));
+  if (myId !== Math.max(...ids)) return; // не самая поздняя страница — обработает она сама
 
-  await env.PENDING.delete(key);
-  await tg(env, "sendMessage", { chat_id: chatId, text: `📄 Получил ${current.length} стр. программки, разбираю…` });
+  ids.sort((a, b) => a - b);
+  const items = [];
+  for (const id of ids) {
+    const raw = await env.PENDING.get(`${prefix}${id}`);
+    if (raw) items.push(JSON.parse(raw));
+  }
+  await Promise.all(ids.map((id) => env.PENDING.delete(`${prefix}${id}`)));
+
+  await tg(env, "sendMessage", { chat_id: chatId, text: `📄 Получил ${items.length} стр. программки, разбираю…` });
 
   const blocks = [];
-  for (const item of current) {
+  for (const item of items) {
     const { buffer } = await tgFile(env, item.fileId);
     blocks.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64encode(buffer) } });
   }
-  const caption = current.map((i) => i.caption).filter(Boolean).join("\n");
+  const caption = items.map((i) => i.caption).filter(Boolean).join("\n");
   const context = caption ? `\nПодпись от зрителя: ${caption}` : "";
   const parsed = await claude(env, [...blocks, { type: "text", text: PARSE_PROMPT + context }], PERF_SCHEMA);
   await proposeIngest(env, chatId, parsed, "", blocks.map((b) => b.source.data));
