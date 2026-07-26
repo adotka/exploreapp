@@ -72,7 +72,7 @@ const PERF_SCHEMA = {
   additionalProperties: false,
   required: ["title", "genre", "author", "libretto", "source_work", "cycle",
     "theatre", "scene", "date", "time", "language", "duration", "premiere",
-    "staff", "cast"],
+    "program", "staff", "cast"],
   properties: {
     title: { type: "string" },
     genre: { type: "string" },
@@ -87,6 +87,14 @@ const PERF_SCHEMA = {
     language: { type: "string" },
     duration: { type: "string" },
     premiere: { type: "string" },
+    program: {
+      type: "array",
+      items: {
+        type: "object", additionalProperties: false,
+        required: ["author", "title"],
+        properties: { author: { type: "string" }, title: { type: "string" } },
+      },
+    },
     staff: {
       type: "array",
       items: {
@@ -109,9 +117,18 @@ const PERF_SCHEMA = {
 const PARSE_PROMPT = `Это программка/афиша театрального спектакля (или её текст). Извлеки данные ДОСЛОВНО, как напечатано, на языке оригинала (обычно русский). Правила:
 - Имена людей — полной формой, как напечатано («Виктория Терешкина», не «В. Терешкина»).
 - title: название произведения; genre: жанр (опера/балет/драма/концерт…); author: автор исходного произведения (композитор/драматург), одно имя.
+- program: ТОЛЬКО для сборных концертов из нескольких самостоятельных произведений разных
+  авторов — по одной записи {author, title} на произведение, в порядке программы. Если
+  исполняется одно произведение целиком (опера/балет) — program: [] (пустой массив), эта
+  информация уже в title/author. Когда program непустой, title — название концерта/события
+  (как напечатано), а author можно оставить "".
 - theatre/scene: театр и подсцена. Для Мариинского theatre всегда «Мариинский театр», scene — одно из: «Историческая сцена», «Мариинский-2», «Концертный зал». Подсказка: в URL афиши mariinsky.ru код сцены перед временем: 1 = Историческая сцена, 2 = Мариинский-2, 3 = Концертный зал.
 - date: ГГГГ-ММ-ДД; time: ЧЧ:ММ; premiere: даты премьеры постановки как в тексте.
 - staff: постановочная группа (дирижёр, режиссёр, хореограф, художники, хормейстеры…); cast: исполнители с партиями/ролями.
+- Если в программке отдельным блоком назван коллектив-исполнитель (оркестр, хор, ансамбль —
+  например «Оркестр — Персимфанс»), включи его в cast отдельной строкой с ролью-типом
+  коллектива («Оркестр», «Хор», «Ансамбль» и т.п.) и названием коллектива как единственным
+  именем — даже если коллектив описан общим текстом/врезкой, а не в табличном списке партий.
 - Неизвестные поля — пустая строка "" или пустой массив. Ничего не выдумывай.`;
 
 async function claude(env, blocks, schema, maxTokens = 8192) {
@@ -376,7 +393,7 @@ function minimalParsed(pick) {
   return {
     title: pick.title, genre: "", author: "", libretto: "", source_work: "", cycle: "",
     theatre: pick.venue, scene: pick.scene || "", date: pick.date, time: pick.time || "",
-    language: "", duration: "", premiere: "", staff: [], cast: [],
+    language: "", duration: "", premiere: "", program: [], staff: [], cast: [],
   };
 }
 
@@ -427,6 +444,11 @@ export function renderItem(p, sourceUrl, playbillPath) {
     .filter((r) => r.role && r.names && r.names.length)
     .map((r) => `- ${r.role.trim()} — ${r.names.map((n) => n.trim()).join(", ")}`)
     .join("\n");
+  const programLines = (p.program || [])
+    .filter((w) => w.author && w.title)
+    .map((w) => `- ${w.author.trim()} — ${w.title.trim()}`)
+    .join("\n");
+  const programSection = programLines ? `\n## Программа\n\n${programLines}\n` : "";
   const today = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
   return `# ${p.title} — ${p.theatre}, ${p.date}
 
@@ -436,7 +458,7 @@ export function renderItem(p, sourceUrl, playbillPath) {
 ## Facts
 
 ${f.join("\n")}
-
+${programSection}
 ## Постановщики
 
 ${roles(p.staff || [])}
@@ -471,6 +493,9 @@ export function insertInventoryRow(content, p, fileName) {
 export function peopleOf(p) {
   const names = new Set();
   if (p.author && p.author.trim()) names.add(p.author.replace(/\s*\(.*?\)\s*/g, " ").trim());
+  for (const w of p.program || []) {
+    if (w.author && w.author.trim()) names.add(w.author.replace(/\s*\(.*?\)\s*/g, " ").trim());
+  }
   for (const grp of [...(p.staff || []), ...(p.cast || [])]) {
     for (const n of grp.names || []) if (n.trim()) names.add(n.trim());
   }
@@ -583,8 +608,9 @@ function stripHtml(html) {
 function preview(p, known) {
   const lines = [
     `🎭 <b>${p.title}</b>${p.genre ? ` (${p.genre})` : ""}`,
-    p.author ? `Автор: ${p.author}` : "",
+    !p.program?.length && p.author ? `Автор: ${p.author}` : "",
     `${p.theatre}${p.scene ? " · " + p.scene : ""}${p.date ? " · " + p.date : ""}${p.time ? " " + p.time : ""}`,
+    p.program && p.program.length ? `Программа: ${p.program.map((w) => `${w.author} — ${w.title}`).slice(0, 4).join("; ")}${p.program.length > 4 ? "…" : ""}` : "",
     p.staff && p.staff.length ? `Постановщики: ${p.staff.length}` : "",
     p.cast && p.cast.length ? `Состав: ${p.cast.map((c) => `${c.role} — ${c.names.join(", ")}`).slice(0, 6).join("; ")}` : "",
   ].filter(Boolean);

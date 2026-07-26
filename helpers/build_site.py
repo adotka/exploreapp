@@ -112,6 +112,7 @@ class Performance:
         self.status = fields.get("Status", "active")
         self.staff = parse_roles(sections.get("Постановщики", []))
         self.cast = parse_roles(sections.get("Состав", []))
+        self.program = parse_program(sections.get("Программа", []))
         self.impressions = "\n".join(sections.get("Впечатления", [])).strip()
 
     @property
@@ -121,10 +122,12 @@ class Performance:
         return self.theatre or self.scene
 
     def people(self):
-        """(имя, роль) для всех участников, включая автора."""
+        """(имя, роль) для всех участников, включая автора(ов)."""
         seen = []
         if self.author:
             seen.append((clean_name(self.author), "автор"))
+        for author, _title in self.program:
+            seen.append((author, "автор"))
         for role, names in self.staff + self.cast:
             for name in names:
                 seen.append((name, role))
@@ -147,6 +150,21 @@ def parse_roles(lines):
             continue  # незаполненная строка из шаблона
         roles.append((role, names))
     return roles
+
+
+def parse_program(lines):
+    """«Автор — Название произведения», по одному произведению в строке (сборные концерты)."""
+    program = []
+    for line in lines:
+        m = ROLE_RE.match(line)
+        if not m:
+            continue
+        author = clean_name(m.group(1).strip())
+        title = m.group(2).strip()
+        if author.startswith("<") or title.startswith("<"):
+            continue  # незаполненная строка из шаблона
+        program.append((author, title))
+    return program
 
 
 def parse_item(path: Path):
@@ -260,7 +278,12 @@ def build(items_dir: Path, out_dir: Path) -> int:
     for p in perfs:
         for name, role in p.people():
             people[name].append((role, p))
-        works[p.title].append(p)
+        if p.program:
+            # Сборный концерт — не единое произведение; индексируем каждое из программы.
+            for _author, work_title in p.program:
+                works[work_title].append(p)
+        else:
+            works[p.title].append(p)
         if p.theatre:
             theatres[p.theatre].append(p)
 
@@ -286,11 +309,11 @@ def build(items_dir: Path, out_dir: Path) -> int:
     for p in perfs:
         root = "../"
         facts = []
-        if p.title:
+        if p.title and not p.program:
             facts.append(("Произведение", link_work(root, p.title)))
         if p.genre:
             facts.append(("Жанр", esc(p.genre)))
-        if p.author:
+        if p.author and not p.program:
             facts.append(("Автор", link_person(root, clean_name(p.author))))
         if p.theatre:
             venue = link_theatre(root, p.theatre)
@@ -300,10 +323,15 @@ def build(items_dir: Path, out_dir: Path) -> int:
         if p.date:
             facts.append(("Дата", esc(p.date)))
         if p.playbill:
-            if p.playbill.startswith("http"):
-                facts.append(("Программка", f'<a href="{esc(p.playbill)}">ссылка</a>'))
-            else:
-                facts.append(("Программка", f'<a href="{root}{esc(p.playbill)}">скан</a>'))
+            paths = [x.strip() for x in p.playbill.split(",") if x.strip()]
+            links = []
+            for i, path in enumerate(paths):
+                if path.startswith("http"):
+                    links.append(f'<a href="{esc(path)}">ссылка</a>')
+                else:
+                    label = "скан" if len(paths) == 1 else f"скан {i + 1}"
+                    links.append(f'<a href="{root}{esc(path)}">{label}</a>')
+            facts.append(("Программка", ", ".join(links)))
         if p.source:
             facts.append(("Источник", f'<a href="{esc(p.source)}">страница спектакля</a>'))
         if p.status == "retired":
@@ -312,6 +340,11 @@ def build(items_dir: Path, out_dir: Path) -> int:
         body = [f"<h1>{esc(p.title)}</h1>",
                 f'<p class="meta">{esc(p.venue_label)}{" · " + esc(p.date) if p.date else ""}</p>',
                 f"<dl>{dl}</dl>"]
+        if p.program:
+            rows = "".join(
+                f"<li>{link_person(root, author)} — {link_work(root, title)}</li>"
+                for author, title in p.program)
+            body.append(f'<h2>Программа</h2><ul class="plain">{rows}</ul>')
         if p.staff:
             rows = "".join(
                 f"<li>{esc(role)} — " + ", ".join(link_person(root, n) for n in names) + "</li>"
@@ -359,7 +392,13 @@ def build(items_dir: Path, out_dir: Path) -> int:
     (out_dir / "proizvedeniya" / "index.html").write_text(
         page(root, "Произведения", "proizvedeniya/index.html", body), encoding="utf-8")
     for title, ps in works.items():
-        authors = sorted({clean_name(p.author) for p in ps if p.author})
+        authors = set()
+        for p in ps:
+            if p.program:
+                authors.update(a for a, t in p.program if t == title)
+            elif p.author:
+                authors.add(clean_name(p.author))
+        authors = sorted(authors)
         meta = ""
         if authors:
             meta = ('<p class="meta">Автор: '
