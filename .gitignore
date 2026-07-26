@@ -9,6 +9,9 @@
 # Wrangler local build cache — regenerated on every `wrangler deploy`
 /bot/.wrangler/
 
+# Python bytecode cache — regenerated whenever helpers/*.py is imported
+__pycache__/
+
 # Local-only task view folders — uncomment when the A2 organ is built (see GROWTH.md A2)
 #/open/
 #/done/
