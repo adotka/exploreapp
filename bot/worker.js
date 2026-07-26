@@ -38,6 +38,10 @@ export function slugify(text) {
 
 export function theatreSlug(theatre) {
   if (/Мариинск/i.test(theatre || "")) return "mariinsky";
+  if (/консерватори/i.test(theatre || "")) return "consv";
+  if (/зарядь/i.test(theatre || "")) return "zaryadye";
+  if (/мамт|станиславск|немирович/i.test(theatre || "")) return "mamt";
+  if (/внутри/i.test(theatre || "")) return "vnutri";
   return slugify(theatre || "teatr");
 }
 
@@ -204,6 +208,178 @@ async function probeMariinskyDay(y, m, d) {
   return events;
 }
 
+export async function lookupMariinskyEvents(y, m, d) {
+  const dayUrl = `https://www.mariinsky.ru/playbill/playbill/${y}/${m}/${d}/`;
+  let dayHtml;
+  try {
+    dayHtml = await (await fetch(dayUrl)).text();
+  } catch (e) { return []; }
+  let events = parseMariinskyDay(dayHtml);
+  if (!events.length) events = await probeMariinskyDay(y, m, d);
+  return events.map((e) => ({ ...e, venue: "Мариинский театр" }));
+}
+
+/** Изолирует содержимое одного <div class="tab-pane" id="..."> (afisha по дню на mosconsv.ru). */
+function extractTabPane(html, id) {
+  const marker = `id="${id}" role="tabpanel"`;
+  const i = html.indexOf(marker);
+  if (i === -1) return "";
+  const start = html.indexOf(">", i) + 1;
+  const j = html.indexOf('class="tab-pane', start);
+  return j === -1 ? html.slice(start) : html.slice(start, j);
+}
+
+export async function lookupMosconsvEvents(y, m, d) {
+  const dateStr = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  let html;
+  try {
+    html = await (await fetch(`https://www.mosconsv.ru/afisha/${dateStr}`)).text();
+  } catch (e) { return []; }
+  const pane = extractTabPane(html, dateStr);
+  if (!pane) return [];
+  const events = [];
+  for (const block of pane.split('class="row hall-block"').slice(1)) {
+    const hallMatch = block.match(/divider-new"><h[0-9][^>]*>([^<]*)<\/h[0-9]>/);
+    const scene = hallMatch ? hallMatch[1].trim() : "";
+    const eventRe = /<span>(\d+)<\/span><sup>(\d+)<\/sup>[\s\S]*?<a href="(\/ru\/concert\/\d+)">\s*<h6[^>]*>([^<]*)<\/h6>/g;
+    let em;
+    while ((em = eventRe.exec(block))) {
+      const [, hh, mm, path, titleRaw] = em;
+      events.push({
+        url: `https://www.mosconsv.ru${path}`,
+        scene,
+        time: `${hh.padStart(2, "0")}:${mm}`,
+        title: titleRaw.replace(/\s+/g, " ").trim(),
+        date: dateStr,
+        venue: "Московская консерватория",
+      });
+    }
+  }
+  return events;
+}
+
+/** zaryadyehall.ru отдаёт только текущее окно вперёд — архив прошлых дат недоступен. */
+export async function lookupZaryadyeEvents() {
+  let html;
+  try {
+    html = await (await fetch("https://zaryadyehall.ru/events/")).text();
+  } catch (e) { return []; }
+  const events = [];
+  for (const row of html.split('class="events__content_row"').slice(1)) {
+    const tsMatch = row.match(/data-time-row="(\d+)"/);
+    if (!tsMatch) continue;
+    // date_xl в тексте не содержит год — берём дату из unix-таймстампа (МСК-полночь).
+    const dateStr = new Date((parseInt(tsMatch[1], 10) + 10800) * 1000).toISOString().slice(0, 10);
+    const itemRe = /<div class="time">([^<]*)<\/div>\s*<span class="light_text main_font">([^<]*)<\/span>[\s\S]*?<a href="([^"]+)" class="title_link">([\s\S]*?)<\/a>/g;
+    let im;
+    while ((im = itemRe.exec(row))) {
+      const [, timeRaw, hallRaw, href, titleRaw] = im;
+      const title = titleRaw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      events.push({
+        url: href.startsWith("http") ? href : `https://zaryadyehall.ru${href}`,
+        scene: hallRaw.trim(),
+        time: timeRaw.trim(),
+        title,
+        date: dateStr,
+        venue: "Зарядье",
+      });
+    }
+  }
+  return events;
+}
+
+/**
+ * stanmuz.ru: афиша даёт title/date/time/зал, но НЕТ ссылки на программку конкретного
+ * показа — только общий список площадки. Время в itemprop="startDate" на сайте расходится
+ * с отображаемым текстом на 3 часа (наблюдаемый баг сайта) — доверяем видимому тексту.
+ * Только текущее окно продаж, без архива.
+ */
+export async function lookupMamtEvents() {
+  let html;
+  try {
+    html = await (await fetch("https://www.stanmuz.ru/afisha/")).text();
+  } catch (e) { return []; }
+  const events = [];
+  const re = /class="date" itemprop="startDate" content="(\d{4}-\d{2}-\d{2})T[^"]*"[^>]*>[\s\S]*?<div[^>]*class="time">([^<]*)<\/div>[\s\S]{0,600}?itemprop="name"[^>]*>([^<]*)<\/h3>\s*<p class="sub">([^<]*)<\/p>/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const [, dateStr, timeText, titleRaw, subRaw] = m;
+    const timeMatch = timeText.match(/(\d{1,2}:\d{2})/);
+    if (!timeMatch) continue;
+    const parts = subRaw.split("|").map((s) => s.trim());
+    const scene = parts.find((p) => /сцена|зал/i.test(p)) || parts[0] || "";
+    events.push({
+      url: "",
+      scene,
+      time: timeMatch[1],
+      title: titleRaw.trim(),
+      date: dateStr,
+      venue: "МАМТ",
+    });
+  }
+  return events;
+}
+
+/**
+ * vnutri.space (Tilda) — рукописная главная страница, одна запись на постановку (не на
+ * конкретный показ), даты без года в духе «вт, ср 14.07, 15.07 18:00, 21:00». Год
+ * восстанавливаем эвристикой (ближайшее будущее); при несовпадении числа дат/времён —
+ * лучшее возможное сопоставление. Ссылка ведёт на общую страницу спектакля.
+ */
+export async function lookupVnutriEvents() {
+  let html;
+  try {
+    html = await (await fetch("https://vnutri.space/")).text();
+  } catch (e) { return []; }
+  const events = [];
+  const today = new Date(Date.now() + 3 * 3600e3);
+  for (const block of html.split("t513__time t-name t-name_md").slice(1)) {
+    const timeBlockMatch = block.match(/field="[^"]*">([\s\S]*?)<\/div>/);
+    const titleMatch = block.match(/t513__title[^>]*>\s*<a href="([^"]+)"[^>]*>([^<]*)</);
+    if (!timeBlockMatch || !titleMatch) continue;
+    const raw = timeBlockMatch[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const dates = [...raw.matchAll(/(\d{1,2})\.(\d{1,2})/g)].map((mm) => [parseInt(mm[1], 10), parseInt(mm[2], 10)]);
+    const times = [...raw.matchAll(/(\d{1,2}:\d{2})/g)].map((mm) => mm[1]);
+    if (!dates.length || !times.length) continue;
+    const [url, titleRaw] = [titleMatch[1], titleMatch[2].trim()];
+    const pairs = dates.length === times.length
+      ? dates.map((d, i) => [d, times[i]])
+      : times.length === 1
+      ? dates.map((d) => [d, times[0]])
+      : dates.length === 1
+      ? times.map((t) => [dates[0], t])
+      : dates.flatMap((d) => times.map((t) => [d, t]));
+    for (const [[day, month], time] of pairs) {
+      // Год не печатается на странице; страница часто слегка отстаёт от реальной
+      // даты (наблюдалось), поэтому НЕ подкручиваем вперёд на «следующий год» —
+      // это буквально сломало бы совпадение для недавно прошедших дат.
+      const year = today.getUTCFullYear();
+      events.push({
+        url, scene: "", time, title: titleRaw,
+        date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+        venue: "Внутри",
+      });
+    }
+  }
+  return events;
+}
+
+const VENUE_REGISTRY = [
+  { match: (t) => /мариинск/i.test(t || ""), lookup: (d) => lookupMariinskyEvents(d.y, d.m, d.d), dateScoped: true },
+  { match: (t) => /консерватори/i.test(t || ""), lookup: (d) => lookupMosconsvEvents(d.y, d.m, d.d), dateScoped: true },
+  { match: (t) => /зарядь/i.test(t || ""), lookup: lookupZaryadyeEvents, dateScoped: false },
+  { match: (t) => /мамт|станиславск|немирович/i.test(t || ""), lookup: lookupMamtEvents, dateScoped: false },
+  { match: (t) => /внутри/i.test(t || ""), lookup: lookupVnutriEvents, dateScoped: false },
+];
+
+function minimalParsed(pick) {
+  return {
+    title: pick.title, genre: "", author: "", libretto: "", source_work: "", cycle: "",
+    theatre: pick.venue, scene: pick.scene || "", date: pick.date, time: pick.time || "",
+    language: "", duration: "", premiere: "", staff: [], cast: [],
+  };
+}
+
 const FREE_QUERY_SCHEMA = {
   type: "object", additionalProperties: false,
   required: ["title", "date", "theatre", "time"],
@@ -217,8 +393,11 @@ const FREE_QUERY_PROMPT = `Зритель просит найти в архив�
 - title: название произведения, как упомянуто (не уточняй и не исправляй).
 - date: дата спектакля в формате ГГГГ-ММ-ДД. Год обязателен — если год не указан явно и
   не следует из контекста, оставь "".
-- theatre: полное официальное название театра («Мариинка»/«Мариинскую»/«Мариинке» →
-  «Мариинский театр»). Если непонятно — "".
+- theatre: полное официальное название театра/площадки, если понятно из контекста.
+  Нормализуй так: «Мариинка»/«Мариинку»/«Мариинском» → «Мариинский театр»; «консерватория»/
+  «консерватории»/«консе» → «Московская консерватория»; «Зарядье» → «Зарядье»; «МАМТ»/
+  «Станиславского»/«Немировича-Данченко» → «МАМТ»; «Внутри» → «Внутри». Если непонятно
+  или это другой театр — "".
 - time: время начала в формате ЧЧ:ММ, если указано явно (например, при уточнении после
   вопроса про несколько показов в один день). Иначе "".
 Если в сообщении нет узнаваемого названия спектакля ИЛИ даты — верни все поля пустыми
@@ -475,12 +654,16 @@ async function proposePick(env, chatId, candidates) {
   const key = crypto.randomUUID();
   await env.PENDING.put(key, JSON.stringify(candidates), { expirationTtl: 900 });
   const sameTitle = new Set(candidates.map((c) => c.title)).size === 1;
+  const sameVenue = new Set(candidates.map((c) => c.venue)).size === 1;
   const buttons = candidates.map((c, i) => ([{
-    text: truncate(sameTitle ? `${c.time} · ${c.scene}` : `${c.title} — ${c.time}`, 60),
+    text: truncate(
+      sameTitle ? (sameVenue ? `${c.time} · ${c.scene}` : `${c.time} · ${c.venue}`) : `${c.title} — ${c.time}`,
+      60,
+    ),
     callback_data: `p:${key}:${i}`,
   }]));
   buttons.push([{ text: "❌ Отмена", callback_data: `x:${key}` }]);
-  const listLabel = candidates.map((c) => `«${c.title}» — ${c.scene}, ${c.time}`).join("\n");
+  const listLabel = candidates.map((c) => `«${c.title}» — ${c.venue}, ${c.scene}, ${c.time}`).join("\n");
   await tg(env, "sendMessage", {
     chat_id: chatId,
     text: `Нашёл несколько подходящих показов:\n${listLabel}\n\nВыберите нужный:`,
@@ -503,11 +686,20 @@ async function confirmPick(env, cb) {
     return;
   }
   await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Выбрано" });
-  await tg(env, "editMessageText", {
-    chat_id: cb.message.chat.id, message_id: cb.message.message_id,
-    text: `🎭 ${chosen.title} (${chosen.scene}, ${chosen.time}). Разбираю программку…`,
-  });
-  await handleUrl(env, cb.message.chat.id, chosen.url);
+  const chatId = cb.message.chat.id;
+  if (chosen.url) {
+    await tg(env, "editMessageText", {
+      chat_id: chatId, message_id: cb.message.message_id,
+      text: `🎭 ${chosen.title} (${chosen.venue}, ${chosen.scene}, ${chosen.time}). Разбираю программку…`,
+    });
+    await handleUrl(env, chatId, chosen.url, { theatre: chosen.venue, scene: chosen.scene, date: chosen.date, time: chosen.time });
+  } else {
+    await tg(env, "editMessageText", {
+      chat_id: chatId, message_id: cb.message.message_id,
+      text: `🎭 ${chosen.title} (${chosen.venue}, ${chosen.scene}, ${chosen.time}). Программки на сайте нет — добавляю базовые данные.`,
+    });
+    await proposeIngest(env, chatId, minimalParsed(chosen), "", null);
+  }
 }
 
 async function handleLocation(env, chatId, loc) {
@@ -535,43 +727,47 @@ async function handleLocation(env, chatId, loc) {
   await handleUrl(env, chatId, pick.url);
 }
 
-async function handleUrl(env, chatId, url) {
+async function handleUrl(env, chatId, url, overrides) {
   const pageText = stripHtml(await (await fetch(url)).text());
   const parsed = await claude(env, [{
     type: "text",
     text: `${PARSE_PROMPT}\n\nURL страницы: ${url}\n\nТекст страницы:\n${pageText}`,
   }], PERF_SCHEMA);
+  if (overrides) Object.assign(parsed, overrides);
   await proposeIngest(env, chatId, parsed, url, null);
 }
 
 async function lookupByTitleDate(env, chatId, title, date, theatre, time) {
-  if (theatre && theatreSlug(theatre) !== "mariinsky") {
-    await tg(env, "sendMessage", { chat_id: chatId, text: `Пока умею искать в архиве только Мариинский театр. Пришлите ссылку на страницу спектакля вручную.` });
-    return;
-  }
   const m2 = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m2) {
     await tg(env, "sendMessage", { chat_id: chatId, text: "Не смог разобрать дату — уточните в формате «ДД месяц ГГГГ» или «ГГГГ-ММ-ДД»." });
     return;
   }
   const [, y, mm, dd] = m2;
-  const m = parseInt(mm, 10), d = parseInt(dd, 10);
-  await tg(env, "sendMessage", { chat_id: chatId, text: `🔎 Ищу «${title}» в афише Мариинского театра на ${date}…` });
-  const dayUrl = `https://www.mariinsky.ru/playbill/playbill/${y}/${m}/${d}/`;
-  let dayHtml;
-  try {
-    dayHtml = await (await fetch(dayUrl)).text();
-  } catch (e) {
-    await tg(env, "sendMessage", { chat_id: chatId, text: `Не удалось открыть афишу за ${date}. Пришлите ссылку на страницу спектакля вручную.` });
-    return;
+  const dateStr = `${y}-${mm}-${dd}`;
+  const ymd = { y: parseInt(y, 10), m: parseInt(mm, 10), d: parseInt(dd, 10) };
+
+  let venues = VENUE_REGISTRY;
+  if (theatre) {
+    venues = VENUE_REGISTRY.filter((v) => v.match(theatre));
+    if (!venues.length) {
+      await tg(env, "sendMessage", { chat_id: chatId, text: `Пока не умею искать в афише «${theatre}». Пришлите ссылку на страницу спектакля вручную.` });
+      return;
+    }
   }
-  let events = parseMariinskyDay(dayHtml);
+
+  await tg(env, "sendMessage", { chat_id: chatId, text: `🔎 Ищу «${title}» на ${dateStr}…` });
+
+  const results = await Promise.all(venues.map(async (v) => {
+    try {
+      const all = await v.lookup(ymd);
+      return v.dateScoped ? all : all.filter((e) => e.date === dateStr);
+    } catch (e) { return []; }
+  }));
+  const events = results.flat();
+
   if (!events.length) {
-    // Дата вне текущего окна продаж — день-афиша пуста, перебираем сцену×время напрямую.
-    events = await probeMariinskyDay(y, m, d);
-  }
-  if (!events.length) {
-    await tg(env, "sendMessage", { chat_id: chatId, text: `В афише на ${date} ничего не нашёл. Пришлите ссылку на страницу спектакля вручную.` });
+    await tg(env, "sendMessage", { chat_id: chatId, text: `На ${dateStr} ничего не нашёл. Пришлите ссылку на страницу спектакля вручную.` });
     return;
   }
   const norm = normalizeTitle(title);
@@ -591,19 +787,24 @@ async function lookupByTitleDate(env, chatId, title, date, theatre, time) {
     }
   }
   if (!pick && events.length > 1) {
-    const listText = events.map((e, i) => `${i}. «${e.title}» — ${e.scene}, ${e.time}`).join("\n");
+    const listText = events.map((e, i) => `${i}. «${e.title}» — ${e.venue}, ${e.scene}, ${e.time}`).join("\n");
     const choice = await claude(env, [{
       type: "text",
-      text: `Зритель ищет спектакль «${title}» в афише Мариинского театра на ${date}. Вот события этого дня:\n${listText}\n\nВерни номер (index) события, которое соответствует запросу (учитывай сокращения и разговорные варианты названия). Если ни одно не подходит — found=false.`,
+      text: `Зритель ищет спектакль «${title}» на ${dateStr}. Вот найденные события:\n${listText}\n\nВерни номер (index) события, которое соответствует запросу (учитывай сокращения и разговорные варианты названия). Если ни одно не подходит — found=false.`,
     }], EVENT_CHOICE_SCHEMA, 512);
     if (choice.found && events[choice.index]) pick = events[choice.index];
   }
   if (!pick) {
-    await tg(env, "sendMessage", { chat_id: chatId, text: `Не нашёл «${title}» в афише на ${date}. Пришлите ссылку на страницу спектакля вручную.` });
+    await tg(env, "sendMessage", { chat_id: chatId, text: `Не нашёл «${title}» на ${dateStr}. Пришлите ссылку на страницу спектакля вручную.` });
     return;
   }
-  await tg(env, "sendMessage", { chat_id: chatId, text: `🎭 Нашёл: ${pick.title} (${pick.scene}, ${pick.time}). Разбираю программку…` });
-  await handleUrl(env, chatId, pick.url);
+  if (pick.url) {
+    await tg(env, "sendMessage", { chat_id: chatId, text: `🎭 Нашёл: ${pick.title} (${pick.venue}, ${pick.scene}, ${pick.time}). Разбираю программку…` });
+    await handleUrl(env, chatId, pick.url, { theatre: pick.venue, scene: pick.scene, date: pick.date || dateStr, time: pick.time });
+  } else {
+    await tg(env, "sendMessage", { chat_id: chatId, text: `🎭 Нашёл: ${pick.title} (${pick.venue}, ${pick.scene}, ${pick.time}). Программки на сайте нет — добавляю базовые данные, детали (постановщики, состав) можно дописать вручную.` });
+    await proposeIngest(env, chatId, minimalParsed(pick), "", null);
+  }
 }
 
 async function handleFreeText(env, chatId, text) {
@@ -655,7 +856,8 @@ const HELP = `Я — бот архива MindHorizon. Присылайте:
 • 📷 фото/скан программки (или PDF)
 • 🔗 ссылку на страницу спектакля (mariinsky.ru и др.)
 • 📝 свободный текст: короткое упоминание («Парсифаль 12 октября 2024 в Мариинке») —
-  найду в афише и разберу программку; или подробное описание — разберу как есть
+  найду в афише (Мариинский театр, Московская консерватория, Зарядье, МАМТ, Внутри) и
+  разберу программку; или подробное описание — разберу как есть
 • 📍 геолокацию из театра — угадаю, что вы сейчас смотрите
 Каждый разбор я показываю на подтверждение перед записью в архив.`;
 
