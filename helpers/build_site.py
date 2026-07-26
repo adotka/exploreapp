@@ -63,6 +63,7 @@ table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 0.4rem 0.75rem 0.4rem 0; vertical-align: top;
          border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: normal; font-size: 0.85rem; }
+td:first-child, th:first-child { white-space: nowrap; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
 dt { color: var(--muted); }
 dd { margin: 0; }
