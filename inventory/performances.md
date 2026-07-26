@@ -22,6 +22,7 @@
 | 2023-05-20 | Похищение из сераля | Мариинский театр / Историческая сцена | [items/2023-05-20_mariinsky_pohischenie-iz-seralya.md](../items/2023-05-20_mariinsky_pohischenie-iz-seralya.md) |
 | 2023-05-18 | Сон в летнюю ночь | Мариинский театр / Концертный зал | [items/2023-05-18_mariinsky_son-v-letnyuyu-noch.md](../items/2023-05-18_mariinsky_son-v-letnyuyu-noch.md) |
 | 2023-05-17 | Орлеанская дева | Мариинский театр / Мариинский-2 | [items/2023-05-17_mariinsky_orleanskaya-deva.md](../items/2023-05-17_mariinsky_orleanskaya-deva.md) |
+| 2023-01-21 | Отелло | Мариинский театр / Мариинский-2 | [items/2023-01-21_mariinsky_otello.md](../items/2023-01-21_mariinsky_otello.md) |
 | 2022-09-10 | Царская невеста | Мариинский театр / Мариинский-2 | [items/2022-09-10_mariinsky_tsarskaya-nevesta.md](../items/2022-09-10_mariinsky_tsarskaya-nevesta.md) |
 | 2022-04-07 | Сказка о царе Салтане | Мариинский театр / Историческая сцена | [items/2022-04-07_mariinsky_skazka-o-tsare-saltane.md](../items/2022-04-07_mariinsky_skazka-o-tsare-saltane.md) |
 | 2022-04-06 | Троянцы | Мариинский театр / Мариинский-2 | [items/2022-04-06_mariinsky_troyantsy.md](../items/2022-04-06_mariinsky_troyantsy.md) |
