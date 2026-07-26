@@ -19,6 +19,7 @@
 | 2024-08-02 | Валькирия | Мариинский театр / Мариинский-2 | [items/2024-08-02_mariinsky_valkiriya.md](../items/2024-08-02_mariinsky_valkiriya.md) |
 | 2024-08-01 | Золото Рейна | Мариинский театр / Мариинский-2 | [items/2024-08-01_mariinsky_zoloto-reina.md](../items/2024-08-01_mariinsky_zoloto-reina.md) |
 | 2024-04-17 | Золушка | Мариинский театр / Историческая сцена | [items/2024-04-17_mariinsky_zolushka.md](../items/2024-04-17_mariinsky_zolushka.md) |
+| 2023-05-20 | Похищение из сераля | Мариинский театр / Историческая сцена | [items/2023-05-20_mariinsky_pohischenie-iz-seralya.md](../items/2023-05-20_mariinsky_pohischenie-iz-seralya.md) |
 | 2023-05-18 | Сон в летнюю ночь | Мариинский театр / Концертный зал | [items/2023-05-18_mariinsky_son-v-letnyuyu-noch.md](../items/2023-05-18_mariinsky_son-v-letnyuyu-noch.md) |
 | 2023-05-17 | Орлеанская дева | Мариинский театр / Мариинский-2 | [items/2023-05-17_mariinsky_orleanskaya-deva.md](../items/2023-05-17_mariinsky_orleanskaya-deva.md) |
 | 2022-09-10 | Царская невеста | Мариинский театр / Мариинский-2 | [items/2022-09-10_mariinsky_tsarskaya-nevesta.md](../items/2022-09-10_mariinsky_tsarskaya-nevesta.md) |
