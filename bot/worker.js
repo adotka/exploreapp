@@ -594,7 +594,7 @@ function preview(p, known) {
   return lines.join("\n");
 }
 
-async function proposeIngest(env, chatId, parsed, sourceUrl, photo) {
+async function proposeIngest(env, chatId, parsed, sourceUrl, photos) {
   if (!parsed.title || !parsed.date) {
     await tg(env, "sendMessage", { chat_id: chatId, text: "Не удалось распознать название или дату — уточните текстом, пожалуйста." });
     return;
@@ -606,7 +606,7 @@ async function proposeIngest(env, chatId, parsed, sourceUrl, photo) {
   } catch (e) { /* индекс ещё не опубликован — не критично */ }
 
   const key = crypto.randomUUID();
-  await env.PENDING.put(key, JSON.stringify({ parsed, sourceUrl, photo }), { expirationTtl: 86400 });
+  await env.PENDING.put(key, JSON.stringify({ parsed, sourceUrl, photos: photos || [] }), { expirationTtl: 86400 });
   await tg(env, "sendMessage", {
     chat_id: chatId,
     text: preview(parsed, known) + "\n\nДобавить в архив?",
@@ -627,15 +627,17 @@ async function confirmIngest(env, cb) {
     await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Устарело — пришлите ещё раз" });
     return;
   }
-  const { parsed: p, sourceUrl, photo } = JSON.parse(raw);
+  const { parsed: p, sourceUrl, photos } = JSON.parse(raw);
   const fileName = `${p.date}_${theatreSlug(p.theatre)}_${slugify(p.title)}.md`;
-  let playbillPath = "";
   const files = [];
-  if (photo) {
-    playbillPath = `playbills/${p.date}_${theatreSlug(p.theatre)}_${slugify(p.title)}.jpg`;
-    files.push({ path: playbillPath, base64: photo });
-  }
-  files.push({ path: `items/${fileName}`, content: renderItem(p, sourceUrl, playbillPath) });
+  const playbillPaths = [];
+  (photos || []).forEach((photoB64, i) => {
+    const suffix = photos.length > 1 ? `_${i + 1}` : "";
+    const path = `playbills/${p.date}_${theatreSlug(p.theatre)}_${slugify(p.title)}${suffix}.jpg`;
+    playbillPaths.push(path);
+    files.push({ path, base64: photoB64 });
+  });
+  files.push({ path: `items/${fileName}`, content: renderItem(p, sourceUrl, playbillPaths.join(", ")) });
   const inv = await getRawFile(env, "inventory/performances.md");
   files.push({ path: "inventory/performances.md", content: insertInventoryRow(inv, p, fileName) });
   await commitFiles(env, files, `bot: ingest ${p.title} (${p.date})\n\nПодтверждено оператором в Telegram.`);
@@ -706,7 +708,7 @@ async function confirmPick(env, cb) {
       chat_id: chatId, message_id: cb.message.message_id,
       text: `🎭 ${chosen.title} (${chosen.venue}, ${chosen.scene}, ${chosen.time}). Программки на сайте нет — добавляю базовые данные.`,
     });
-    await proposeIngest(env, chatId, minimalParsed(chosen), "", null);
+    await proposeIngest(env, chatId, minimalParsed(chosen), "", []);
   }
 }
 
@@ -742,7 +744,7 @@ async function handleUrl(env, chatId, url, overrides) {
     text: `${PARSE_PROMPT}\n\nURL страницы: ${url}\n\nТекст страницы:\n${pageText}`,
   }], PERF_SCHEMA);
   if (overrides) Object.assign(parsed, overrides);
-  await proposeIngest(env, chatId, parsed, url, null);
+  await proposeIngest(env, chatId, parsed, url, []);
 }
 
 async function lookupByTitleDate(env, chatId, title, date, theatre, time) {
@@ -811,7 +813,7 @@ async function lookupByTitleDate(env, chatId, title, date, theatre, time) {
     await handleUrl(env, chatId, pick.url, { theatre: pick.venue, scene: pick.scene, date: pick.date || dateStr, time: pick.time });
   } else {
     await tg(env, "sendMessage", { chat_id: chatId, text: `🎭 Нашёл: ${pick.title} (${pick.venue}, ${pick.scene}, ${pick.time}). Программки на сайте нет — добавляю базовые данные, детали (постановщики, состав) можно дописать вручную.` });
-    await proposeIngest(env, chatId, minimalParsed(pick), "", null);
+    await proposeIngest(env, chatId, minimalParsed(pick), "", []);
   }
 }
 
@@ -826,7 +828,7 @@ async function handleFreeText(env, chatId, text) {
   const parsed = await claude(env, [
     { type: "text", text: `${PARSE_PROMPT}\n\nОписание от зрителя:\n${text}` },
   ], PERF_SCHEMA);
-  await proposeIngest(env, chatId, parsed, "", null);
+  await proposeIngest(env, chatId, parsed, "", []);
 }
 
 async function handlePhoto(env, chatId, message) {
@@ -839,7 +841,45 @@ async function handlePhoto(env, chatId, message) {
     { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
     { type: "text", text: PARSE_PROMPT + context },
   ], PERF_SCHEMA);
-  await proposeIngest(env, chatId, parsed, "", b64);
+  await proposeIngest(env, chatId, parsed, "", [b64]);
+}
+
+/**
+ * Несколько фото, отправленных одним альбомом (media_group_id), приходят как отдельные
+ * webhook-обновления — каждое в своём вызове Worker'а. Копим страницы в KV; каждый вызов
+ * ждёт короткую паузу и затем проверяет, не пришла ли за это время следующая страница —
+ * если нет, он последний и разбирает альбом целиком; если да, молча выходит (разбором
+ * займётся тот вызов, что окажется последним).
+ */
+async function handlePhotoGroup(env, chatId, message) {
+  const key = `mg:${message.media_group_id}`;
+  const sizes = message.photo;
+  const fileId = sizes[sizes.length - 1].file_id;
+
+  const raw = await env.PENDING.get(key);
+  const items = raw ? JSON.parse(raw) : [];
+  items.push({ fileId, caption: message.caption || "" });
+  await env.PENDING.put(key, JSON.stringify(items), { expirationTtl: 60 });
+  const myCount = items.length;
+
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  const raw2 = await env.PENDING.get(key);
+  const current = raw2 ? JSON.parse(raw2) : [];
+  if (current.length !== myCount) return; // подошли ещё страницы — обработает более поздний вызов
+
+  await env.PENDING.delete(key);
+  await tg(env, "sendMessage", { chat_id: chatId, text: `📄 Получил ${current.length} стр. программки, разбираю…` });
+
+  const blocks = [];
+  for (const item of current) {
+    const { buffer } = await tgFile(env, item.fileId);
+    blocks.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64encode(buffer) } });
+  }
+  const caption = current.map((i) => i.caption).filter(Boolean).join("\n");
+  const context = caption ? `\nПодпись от зрителя: ${caption}` : "";
+  const parsed = await claude(env, [...blocks, { type: "text", text: PARSE_PROMPT + context }], PERF_SCHEMA);
+  await proposeIngest(env, chatId, parsed, "", blocks.map((b) => b.source.data));
 }
 
 async function handleDocument(env, chatId, message) {
@@ -857,7 +897,7 @@ async function handleDocument(env, chatId, message) {
     return;
   }
   const parsed = await claude(env, [block, { type: "text", text: PARSE_PROMPT + context }], PERF_SCHEMA);
-  await proposeIngest(env, chatId, parsed, "", doc.mime_type === "application/pdf" ? null : b64);
+  await proposeIngest(env, chatId, parsed, "", doc.mime_type === "application/pdf" ? [] : [b64]);
 }
 
 const HELP = `Я — бот архива «Йорик» («Я знал его…»). Присылайте:
@@ -900,6 +940,7 @@ async function handleUpdate(env, update) {
 
   try {
     if (message.location) await handleLocation(env, chatId, message.location);
+    else if (message.photo && message.media_group_id) await handlePhotoGroup(env, chatId, message);
     else if (message.photo) await handlePhoto(env, chatId, message);
     else if (message.document) await handleDocument(env, chatId, message);
     else if (message.text && /^\/(start|help)/.test(message.text)) {
