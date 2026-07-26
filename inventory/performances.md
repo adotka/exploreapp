@@ -16,6 +16,7 @@
 | 2024-08-04 | Зигфрид | Мариинский театр / Мариинский-2 | [items/2024-08-04_mariinsky_zigfrid.md](../items/2024-08-04_mariinsky_zigfrid.md) |
 | 2024-08-02 | Валькирия | Мариинский театр / Мариинский-2 | [items/2024-08-02_mariinsky_valkiriya.md](../items/2024-08-02_mariinsky_valkiriya.md) |
 | 2024-08-01 | Золото Рейна | Мариинский театр / Мариинский-2 | [items/2024-08-01_mariinsky_zoloto-reina.md](../items/2024-08-01_mariinsky_zoloto-reina.md) |
+| 2022-09-10 | Царская невеста | Мариинский театр / Мариинский-2 | [items/2022-09-10_mariinsky_tsarskaya-nevesta.md](../items/2022-09-10_mariinsky_tsarskaya-nevesta.md) |
 | 2022-04-06 | Троянцы | Мариинский театр / Мариинский-2 | [items/2022-04-06_mariinsky_troyantsy.md](../items/2022-04-06_mariinsky_troyantsy.md) |
 | 2022-04-04 | Аида | Мариинский театр / Мариинский-2 | [items/2022-04-04_mariinsky_aida.md](../items/2022-04-04_mariinsky_aida.md) |
 
