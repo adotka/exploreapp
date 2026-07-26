@@ -6,6 +6,9 @@
 # Generated site — view of items/, built by helpers/build_site.py; never edit or commit
 /_site/
 
+# Wrangler local build cache — regenerated on every `wrangler deploy`
+/bot/.wrangler/
+
 # Local-only task view folders — uncomment when the A2 organ is built (see GROWTH.md A2)
 #/open/
 #/done/

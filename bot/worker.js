@@ -111,6 +111,9 @@ const PARSE_PROMPT = `Это программка/афиша театральн�
 - Неизвестные поля — пустая строка "" или пустой массив. Ничего не выдумывай.`;
 
 async function claude(env, blocks, schema, maxTokens = 8192) {
+  const model = env.MODEL || "claude-opus-4-8";
+  const outputConfig = { format: { type: "json_schema", schema } };
+  if (!/^claude-haiku-/.test(model)) outputConfig.effort = "medium";
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -119,9 +122,9 @@ async function claude(env, blocks, schema, maxTokens = 8192) {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: env.MODEL || "claude-opus-4-8",
+      model,
       max_tokens: maxTokens,
-      output_config: { effort: "medium", format: { type: "json_schema", schema } },
+      output_config: outputConfig,
       messages: [{ role: "user", content: blocks }],
     }),
   });
@@ -133,14 +136,93 @@ async function claude(env, blocks, schema, maxTokens = 8192) {
   return JSON.parse(text.text);
 }
 
-const EVENT_PICK_SCHEMA = {
+const EVENT_CHOICE_SCHEMA = {
   type: "object", additionalProperties: false,
-  required: ["found", "url", "title", "scene", "time"],
+  required: ["found", "index"],
+  properties: { found: { type: "boolean" }, index: { type: "integer" } },
+};
+
+const MARIINSKY_SCENE_BY_CODE = { "1": "Историческая сцена", "2": "Мариинский-2", "3": "Концертный зал" };
+
+/**
+ * Разбирает дневную афишу mariinsky.ru (шаблон `shop_obj_title`). Время и сцена
+ * закодированы только в href — их нет в видимом тексте, поэтому html нельзя
+ * прогонять через stripHtml() перед этим шагом.
+ */
+export function parseMariinskyDay(html) {
+  const events = [];
+  const re = /<div class="shop_obj_title"><a href="(\/playbill\/playbill\/\d+\/\d+\/\d+\/(\d)_(\d{4})\/)">([^<]*)<\/a><\/div>/g;
+  let match;
+  while ((match = re.exec(html))) {
+    const [, path, sceneCode, hhmm, titleRaw] = match;
+    const title = titleRaw
+      .replace(/&amp;/g, "&").replace(/&laquo;/g, "«").replace(/&raquo;/g, "»").replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ").trim();
+    if (!title) continue;
+    events.push({
+      url: `https://www.mariinsky.ru${path}`,
+      scene: MARIINSKY_SCENE_BY_CODE[sceneCode] || "",
+      time: `${hhmm.slice(0, 2)}:${hhmm.slice(2)}`,
+      title,
+    });
+  }
+  return events;
+}
+
+function normalizeTitle(s) {
+  return s.toLowerCase().replace(/ё/g, "е").replace(/[«»"'.,!?]/g, "").replace(/\s+/g, " ").trim();
+}
+
+// Времена начала, за пределами текущего окна продаж день-афиша ничего не отдаёт
+// (пустой шаблон без событий), но сама страница спектакля по прямой ссылке
+// работает — перебираем сцену×время и проверяем HEAD без follow редиректов
+// (валидная страница отвечает 200 напрямую; неверная сцена/время — 301 на 404).
+const MARIINSKY_PROBE_TIMES = ["1200", "1300", "1400", "1500", "1600", "1700", "1800", "1830", "1900", "1930", "2000"];
+
+async function probeMariinskyDay(y, m, d) {
+  const candidates = [];
+  for (const scene of Object.keys(MARIINSKY_SCENE_BY_CODE)) {
+    for (const time of MARIINSKY_PROBE_TIMES) {
+      candidates.push({ scene, time, url: `https://www.mariinsky.ru/playbill/playbill/${y}/${m}/${d}/${scene}_${time}/` });
+    }
+  }
+  const hits = (await Promise.all(candidates.map(async (c) => {
+    try {
+      const resp = await fetch(c.url, { method: "HEAD", redirect: "manual" });
+      return resp.status === 200 ? c : null;
+    } catch (e) { return null; }
+  }))).filter(Boolean);
+  const events = (await Promise.all(hits.map(async (c) => {
+    try {
+      const html = await (await fetch(c.url)).text();
+      const titleMatch = html.match(/<title>([^<]*)<\/title>/);
+      const title = titleMatch ? titleMatch[1].trim() : "";
+      if (!title) return null;
+      return { url: c.url, scene: MARIINSKY_SCENE_BY_CODE[c.scene], time: `${c.time.slice(0, 2)}:${c.time.slice(2)}`, title };
+    } catch (e) { return null; }
+  }))).filter(Boolean);
+  return events;
+}
+
+const FREE_QUERY_SCHEMA = {
+  type: "object", additionalProperties: false,
+  required: ["title", "date", "theatre", "time"],
   properties: {
-    found: { type: "boolean" }, url: { type: "string" },
-    title: { type: "string" }, scene: { type: "string" }, time: { type: "string" },
+    title: { type: "string" }, date: { type: "string" }, theatre: { type: "string" }, time: { type: "string" },
   },
 };
+
+const FREE_QUERY_PROMPT = `Зритель просит найти в архиве афиши конкретный спектакль по неформальному упоминанию
+(например: «Парсифаль 12 октября 2024 в Мариинке»). Извлеки:
+- title: название произведения, как упомянуто (не уточняй и не исправляй).
+- date: дата спектакля в формате ГГГГ-ММ-ДД. Год обязателен — если год не указан явно и
+  не следует из контекста, оставь "".
+- theatre: полное официальное название театра («Мариинка»/«Мариинскую»/«Мариинке» →
+  «Мариинский театр»). Если непонятно — "".
+- time: время начала в формате ЧЧ:ММ, если указано явно (например, при уточнении после
+  вопроса про несколько показов в один день). Иначе "".
+Если в сообщении нет узнаваемого названия спектакля ИЛИ даты — верни все поля пустыми
+строками (это значит, что это не запрос на поиск, а что-то другое).`;
 
 // ------------------------------------------------------------ рендеринг item
 
@@ -244,11 +326,12 @@ async function gh(env, path, init = {}) {
     },
   });
   if (!resp.ok) throw new Error(`GitHub ${init.method || "GET"} ${path}: ${resp.status} ${(await resp.text()).slice(0, 200)}`);
+  if (init.raw) return resp.text();
   return resp.headers.get("content-type")?.includes("json") ? resp.json() : resp.text();
 }
 
 async function getRawFile(env, path) {
-  return gh(env, `/contents/${path}?ref=main`, { headers: { Accept: "application/vnd.github.raw+json" } });
+  return gh(env, `/contents/${path}?ref=main`, { raw: true, headers: { Accept: "application/vnd.github.raw+json" } });
 }
 
 /** files: [{path, content?} | {path, base64?}] — один атомарный коммит в main. */
@@ -385,6 +468,48 @@ async function confirmIngest(env, cb) {
   });
 }
 
+const truncate = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+
+/** Несколько подходящих показов (тот же день) — кнопки вместо просьбы повторить запрос. */
+async function proposePick(env, chatId, candidates) {
+  const key = crypto.randomUUID();
+  await env.PENDING.put(key, JSON.stringify(candidates), { expirationTtl: 900 });
+  const sameTitle = new Set(candidates.map((c) => c.title)).size === 1;
+  const buttons = candidates.map((c, i) => ([{
+    text: truncate(sameTitle ? `${c.time} · ${c.scene}` : `${c.title} — ${c.time}`, 60),
+    callback_data: `p:${key}:${i}`,
+  }]));
+  buttons.push([{ text: "❌ Отмена", callback_data: `x:${key}` }]);
+  const listLabel = candidates.map((c) => `«${c.title}» — ${c.scene}, ${c.time}`).join("\n");
+  await tg(env, "sendMessage", {
+    chat_id: chatId,
+    text: `Нашёл несколько подходящих показов:\n${listLabel}\n\nВыберите нужный:`,
+    reply_markup: { inline_keyboard: buttons },
+  });
+}
+
+async function confirmPick(env, cb) {
+  const [key, idxStr] = cb.data.slice(2).split(":");
+  const raw = await env.PENDING.get(key);
+  if (!raw) {
+    await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Устарело — повторите запрос" });
+    return;
+  }
+  const candidates = JSON.parse(raw);
+  const chosen = candidates[parseInt(idxStr, 10)];
+  await env.PENDING.delete(key);
+  if (!chosen) {
+    await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Ошибка выбора" });
+    return;
+  }
+  await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Выбрано" });
+  await tg(env, "editMessageText", {
+    chat_id: cb.message.chat.id, message_id: cb.message.message_id,
+    text: `🎭 ${chosen.title} (${chosen.scene}, ${chosen.time}). Разбираю программку…`,
+  });
+  await handleUrl(env, cb.message.chat.id, chosen.url);
+}
+
 async function handleLocation(env, chatId, loc) {
   const venue = nearestVenue(loc.latitude, loc.longitude);
   if (!venue) {
@@ -393,19 +518,20 @@ async function handleLocation(env, chatId, loc) {
   }
   const now = new Date(Date.now() + 3 * 3600e3); // Мск/СПб = UTC+3
   const y = now.getUTCFullYear(), m = now.getUTCMonth() + 1, d = now.getUTCDate();
-  const hhmm = `${String(now.getUTCHours()).padStart(2, "0")}:${String(now.getUTCMinutes()).padStart(2, "0")}`;
+  const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
   await tg(env, "sendMessage", { chat_id: chatId, text: `📍 Похоже, вы в: ${venue.theatre} (${venue.scene}). Ищу, что идёт сегодня…` });
   const dayUrl = `https://www.mariinsky.ru/playbill/playbill/${y}/${m}/${d}/`;
-  const dayHtml = stripHtml(await (await fetch(dayUrl)).text());
-  const pick = await claude(env, [{
-    type: "text",
-    text: `Афиша Мариинского театра на сегодня (${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}), сейчас ${hhmm}. Зритель находится в здании: ${venue.scene}. Найди спектакль, который идёт сейчас или начинается ближайшим на этой сцене. Верни absolute url страницы события (вида https://www.mariinsky.ru/playbill/playbill/ГГГГ/М/Д/<сцена>_<ЧЧММ>/), название, сцену, время. Если ничего нет — found=false.\n\nТекст афиши:\n${dayHtml}`,
-  }], EVENT_PICK_SCHEMA, 2048);
-  if (!pick.found || !pick.url) {
+  const dayHtml = await (await fetch(dayUrl)).text();
+  const toMin = (t) => { const [h, mi] = t.split(":").map(Number); return h * 60 + mi; };
+  const events = parseMariinskyDay(dayHtml)
+    .filter((e) => e.scene === venue.scene)
+    .sort((a, b) => toMin(a.time) - toMin(b.time));
+  const pick = events.filter((e) => toMin(e.time) <= nowMin).pop() || events[0];
+  if (!pick) {
     await tg(env, "sendMessage", { chat_id: chatId, text: `Не нашёл идущий сейчас спектакль в «${venue.scene}». Пришлите ссылку на событие вручную.` });
     return;
   }
-  await tg(env, "sendMessage", { chat_id: chatId, text: `🎭 Сейчас: ${pick.title} (${pick.scene || venue.scene}, ${pick.time}). Разбираю программку…` });
+  await tg(env, "sendMessage", { chat_id: chatId, text: `🎭 Сейчас: ${pick.title} (${pick.scene}, ${pick.time}). Разбираю программку…` });
   await handleUrl(env, chatId, pick.url);
 }
 
@@ -416,6 +542,82 @@ async function handleUrl(env, chatId, url) {
     text: `${PARSE_PROMPT}\n\nURL страницы: ${url}\n\nТекст страницы:\n${pageText}`,
   }], PERF_SCHEMA);
   await proposeIngest(env, chatId, parsed, url, null);
+}
+
+async function lookupByTitleDate(env, chatId, title, date, theatre, time) {
+  if (theatre && theatreSlug(theatre) !== "mariinsky") {
+    await tg(env, "sendMessage", { chat_id: chatId, text: `Пока умею искать в архиве только Мариинский театр. Пришлите ссылку на страницу спектакля вручную.` });
+    return;
+  }
+  const m2 = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m2) {
+    await tg(env, "sendMessage", { chat_id: chatId, text: "Не смог разобрать дату — уточните в формате «ДД месяц ГГГГ» или «ГГГГ-ММ-ДД»." });
+    return;
+  }
+  const [, y, mm, dd] = m2;
+  const m = parseInt(mm, 10), d = parseInt(dd, 10);
+  await tg(env, "sendMessage", { chat_id: chatId, text: `🔎 Ищу «${title}» в афише Мариинского театра на ${date}…` });
+  const dayUrl = `https://www.mariinsky.ru/playbill/playbill/${y}/${m}/${d}/`;
+  let dayHtml;
+  try {
+    dayHtml = await (await fetch(dayUrl)).text();
+  } catch (e) {
+    await tg(env, "sendMessage", { chat_id: chatId, text: `Не удалось открыть афишу за ${date}. Пришлите ссылку на страницу спектакля вручную.` });
+    return;
+  }
+  let events = parseMariinskyDay(dayHtml);
+  if (!events.length) {
+    // Дата вне текущего окна продаж — день-афиша пуста, перебираем сцену×время напрямую.
+    events = await probeMariinskyDay(y, m, d);
+  }
+  if (!events.length) {
+    await tg(env, "sendMessage", { chat_id: chatId, text: `В афише на ${date} ничего не нашёл. Пришлите ссылку на страницу спектакля вручную.` });
+    return;
+  }
+  const norm = normalizeTitle(title);
+  const exact = events.filter((e) => normalizeTitle(e.title) === norm);
+  const candidates = exact.length
+    ? exact
+    : events.filter((e) => normalizeTitle(e.title).includes(norm) || norm.includes(normalizeTitle(e.title)));
+  let pick = null;
+  if (candidates.length === 1) {
+    pick = candidates[0];
+  } else if (candidates.length > 1) {
+    const byTime = time ? candidates.filter((e) => e.time === time) : [];
+    if (byTime.length === 1) pick = byTime[0];
+    if (!pick) {
+      await proposePick(env, chatId, candidates);
+      return;
+    }
+  }
+  if (!pick && events.length > 1) {
+    const listText = events.map((e, i) => `${i}. «${e.title}» — ${e.scene}, ${e.time}`).join("\n");
+    const choice = await claude(env, [{
+      type: "text",
+      text: `Зритель ищет спектакль «${title}» в афише Мариинского театра на ${date}. Вот события этого дня:\n${listText}\n\nВерни номер (index) события, которое соответствует запросу (учитывай сокращения и разговорные варианты названия). Если ни одно не подходит — found=false.`,
+    }], EVENT_CHOICE_SCHEMA, 512);
+    if (choice.found && events[choice.index]) pick = events[choice.index];
+  }
+  if (!pick) {
+    await tg(env, "sendMessage", { chat_id: chatId, text: `Не нашёл «${title}» в афише на ${date}. Пришлите ссылку на страницу спектакля вручную.` });
+    return;
+  }
+  await tg(env, "sendMessage", { chat_id: chatId, text: `🎭 Нашёл: ${pick.title} (${pick.scene}, ${pick.time}). Разбираю программку…` });
+  await handleUrl(env, chatId, pick.url);
+}
+
+async function handleFreeText(env, chatId, text) {
+  const q = await claude(env, [
+    { type: "text", text: `${FREE_QUERY_PROMPT}\n\nСообщение зрителя:\n${text}` },
+  ], FREE_QUERY_SCHEMA, 1024);
+  if (q.title && q.date) {
+    await lookupByTitleDate(env, chatId, q.title, q.date, q.theatre, q.time);
+    return;
+  }
+  const parsed = await claude(env, [
+    { type: "text", text: `${PARSE_PROMPT}\n\nОписание от зрителя:\n${text}` },
+  ], PERF_SCHEMA);
+  await proposeIngest(env, chatId, parsed, "", null);
 }
 
 async function handlePhoto(env, chatId, message) {
@@ -452,7 +654,8 @@ async function handleDocument(env, chatId, message) {
 const HELP = `Я — бот архива MindHorizon. Присылайте:
 • 📷 фото/скан программки (или PDF)
 • 🔗 ссылку на страницу спектакля (mariinsky.ru и др.)
-• 📝 свободный текст с описанием спектакля
+• 📝 свободный текст: короткое упоминание («Парсифаль 12 октября 2024 в Мариинке») —
+  найду в афише и разберу программку; или подробное описание — разберу как есть
 • 📍 геолокацию из театра — угадаю, что вы сейчас смотрите
 Каждый разбор я показываю на подтверждение перед записью в архив.`;
 
@@ -460,13 +663,19 @@ async function handleUpdate(env, update) {
   const cb = update.callback_query;
   if (cb) {
     if (String(cb.from.id) !== String(env.OPERATOR_CHAT_ID)) return;
-    if (cb.data.startsWith("c:")) await confirmIngest(env, cb);
-    else if (cb.data.startsWith("x:")) {
-      await env.PENDING.delete(cb.data.slice(2));
-      await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Отменено" });
-      await tg(env, "editMessageText", {
-        chat_id: cb.message.chat.id, message_id: cb.message.message_id, text: "❌ Отменено.",
-      });
+    try {
+      if (cb.data.startsWith("c:")) await confirmIngest(env, cb);
+      else if (cb.data.startsWith("p:")) await confirmPick(env, cb);
+      else if (cb.data.startsWith("x:")) {
+        await env.PENDING.delete(cb.data.slice(2));
+        await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Отменено" });
+        await tg(env, "editMessageText", {
+          chat_id: cb.message.chat.id, message_id: cb.message.message_id, text: "❌ Отменено.",
+        });
+      }
+    } catch (e) {
+      await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Ошибка ⚠️" });
+      await tg(env, "sendMessage", { chat_id: cb.message.chat.id, text: `⚠️ Ошибка: ${String(e).slice(0, 300)}` });
     }
     return;
   }
@@ -490,10 +699,7 @@ async function handleUpdate(env, update) {
       await tg(env, "sendMessage", { chat_id: chatId, text: "🔗 Разбираю страницу…" });
       await handleUrl(env, chatId, url);
     } else if (message.text) {
-      const parsed = await claude(env, [
-        { type: "text", text: `${PARSE_PROMPT}\n\nОписание от зрителя:\n${message.text}` },
-      ], PERF_SCHEMA);
-      await proposeIngest(env, chatId, parsed, "", null);
+      await handleFreeText(env, chatId, message.text);
     }
   } catch (e) {
     await tg(env, "sendMessage", { chat_id: chatId, text: `⚠️ Ошибка: ${String(e).slice(0, 300)}` });
