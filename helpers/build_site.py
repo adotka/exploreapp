@@ -70,6 +70,10 @@ dd { margin: 0; }
 ul.plain { list-style: none; padding: 0; }
 ul.plain li { padding: 0.2rem 0; }
 .empty { color: var(--muted); font-style: italic; margin: 2rem 0; }
+a.recurring { font-weight: 700; }
+.count { color: var(--muted); font-size: 0.82em; margin-left: 0.15em; }
+.filter-row { margin: 0 0 1rem; }
+.filter-row label { cursor: pointer; }
 """
 
 NAV = [
@@ -227,16 +231,25 @@ def page(root: str, title: str, active: str, body: str) -> str:
 """
 
 
-def link_person(root, name):
-    return f'<a href="{root}lyudi/{slugify(name)}.html">{esc(name)}</a>'
+def link_person(root, name, count=None):
+    cls = ' class="recurring"' if count and count > 1 else ""
+    return f'<a href="{root}lyudi/{slugify(name)}.html"{cls}>{esc(name)}</a>'
+
+
+def person_ref(root, name, people):
+    """Ссылка на человека + бейдж числа встреч, если их больше одной (списки на странице спектакля)."""
+    count = len(people.get(name, []))
+    link = link_person(root, name, count)
+    return f'{link} <span class="count">×{count}</span>' if count > 1 else link
 
 
 def link_perf(root, p):
     return f'<a href="{root}spektakli/{p.slug}.html">{esc(p.title)}</a>'
 
 
-def link_work(root, title):
-    return f'<a href="{root}proizvedeniya/{slugify(title)}.html">{esc(title)}</a>'
+def link_work(root, title, count=None):
+    cls = ' class="recurring"' if count and count > 1 else ""
+    return f'<a href="{root}proizvedeniya/{slugify(title)}.html"{cls}>{esc(title)}</a>'
 
 
 def link_theatre(root, theatre):
@@ -310,11 +323,12 @@ def build(items_dir: Path, out_dir: Path) -> int:
         root = "../"
         facts = []
         if p.title and not p.program:
-            facts.append(("Произведение", link_work(root, p.title)))
+            facts.append(("Произведение", link_work(root, p.title, len(works.get(p.title, [])))))
         if p.genre:
             facts.append(("Жанр", esc(p.genre)))
         if p.author and not p.program:
-            facts.append(("Автор", link_person(root, clean_name(p.author))))
+            author_name = clean_name(p.author)
+            facts.append(("Автор", link_person(root, author_name, len(people.get(author_name, [])))))
         if p.theatre:
             venue = link_theatre(root, p.theatre)
             if p.scene:
@@ -342,17 +356,18 @@ def build(items_dir: Path, out_dir: Path) -> int:
                 f"<dl>{dl}</dl>"]
         if p.program:
             rows = "".join(
-                f"<li>{link_person(root, author)} — {link_work(root, title)}</li>"
+                f"<li>{person_ref(root, author, people)} — "
+                f"{link_work(root, title, len(works.get(title, [])))}</li>"
                 for author, title in p.program)
             body.append(f'<h2>Программа</h2><ul class="plain">{rows}</ul>')
         if p.staff:
             rows = "".join(
-                f"<li>{esc(role)} — " + ", ".join(link_person(root, n) for n in names) + "</li>"
+                f"<li>{esc(role)} — " + ", ".join(person_ref(root, n, people) for n in names) + "</li>"
                 for role, names in p.staff)
             body.append(f'<h2>Постановщики</h2><ul class="plain">{rows}</ul>')
         if p.cast:
             rows = "".join(
-                f"<li>{esc(role)} — " + ", ".join(link_person(root, n) for n in names) + "</li>"
+                f"<li>{esc(role)} — " + ", ".join(person_ref(root, n, people) for n in names) + "</li>"
                 for role, names in p.cast)
             body.append(f'<h2>Состав</h2><ul class="plain">{rows}</ul>')
         if p.impressions:
@@ -364,9 +379,29 @@ def build(items_dir: Path, out_dir: Path) -> int:
     root = "../"
     if people:
         rows = "".join(
-            f"<li>{link_person('', name)} <span class=\"meta\">({len(entries)})</span></li>"
+            f'<li data-count="{len(entries)}">{link_person("", name, len(entries))} '
+            f'<span class="meta">({len(entries)})</span></li>'
             for name, entries in sorted(people.items()))
-        body = f'<h1>Люди</h1><ul class="plain">{rows}</ul>'
+        filter_ui = (
+            '<p class="filter-row"><label>'
+            '<input type="checkbox" id="filter-recurring" checked> '
+            'Только те, кого встречали больше одного раза</label></p>'
+        )
+        script = """<script>
+(function () {
+  var cb = document.getElementById("filter-recurring");
+  var items = document.querySelectorAll("#people-list li");
+  function apply() {
+    items.forEach(function (li) {
+      var show = !cb.checked || parseInt(li.dataset.count, 10) > 1;
+      li.style.display = show ? "" : "none";
+    });
+  }
+  cb.addEventListener("change", apply);
+  apply();
+})();
+</script>"""
+        body = f'<h1>Люди</h1>{filter_ui}<ul class="plain" id="people-list">{rows}</ul>{script}'
     else:
         body = '<h1>Люди</h1><p class="empty">Пока никого — люди появятся из программок.</p>'
     (out_dir / "lyudi" / "index.html").write_text(
@@ -383,7 +418,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
     # Произведения
     if works:
         rows = "".join(
-            f"<li>{link_work('', title).replace('proizvedeniya/', '')} "
+            f"<li>{link_work('', title, len(ps)).replace('proizvedeniya/', '')} "
             f"<span class=\"meta\">({len(ps)})</span></li>"
             for title, ps in sorted(works.items()))
         body = f'<h1>Произведения</h1><ul class="plain">{rows}</ul>'
@@ -402,7 +437,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
         meta = ""
         if authors:
             meta = ('<p class="meta">Автор: '
-                    + ", ".join(link_person(root, a) for a in authors) + "</p>")
+                    + ", ".join(link_person(root, a, len(people.get(a, []))) for a in authors) + "</p>")
         body = f"<h1>{esc(title)}</h1>{meta}" + perf_table(root, ps)
         (out_dir / "proizvedeniya" / f"{slugify(title)}.html").write_text(
             page(root, title, "proizvedeniya/index.html", body), encoding="utf-8")
