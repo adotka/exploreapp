@@ -12,6 +12,7 @@
 | 2025-12-13 | Волшебная флейта | Мариинский театр / Мариинский-2 | [items/2025-12-13_mariinsky_volshebnaya-fleita.md](../items/2025-12-13_mariinsky_volshebnaya-fleita.md) |
 | 2025-02-09 | Аида | Мариинский театр / Мариинский-2 | [items/2025-02-09_mariinsky_aida.md](../items/2025-02-09_mariinsky_aida.md) |
 | 2025-02-08 | Король шахмат | Мариинский театр / Концертный зал | [items/2025-02-08_mariinsky_korol-shahmat.md](../items/2025-02-08_mariinsky_korol-shahmat.md) |
+| 2024-10-12 | Парсифаль | Мариинский театр / Историческая сцена | [items/2024-10-12_mariinsky_parsifal.md](../items/2024-10-12_mariinsky_parsifal.md) |
 | 2024-08-06 | Гибель богов | Мариинский театр / Мариинский-2 | [items/2024-08-06_mariinsky_gibel-bogov.md](../items/2024-08-06_mariinsky_gibel-bogov.md) |
 | 2024-08-04 | Зигфрид | Мариинский театр / Мариинский-2 | [items/2024-08-04_mariinsky_zigfrid.md](../items/2024-08-04_mariinsky_zigfrid.md) |
 | 2024-08-02 | Валькирия | Мариинский театр / Мариинский-2 | [items/2024-08-02_mariinsky_valkiriya.md](../items/2024-08-02_mariinsky_valkiriya.md) |
