@@ -21,6 +21,7 @@
 | 2022-04-07 | Сказка о царе Салтане | Мариинский театр / Историческая сцена | [items/2022-04-07_mariinsky_skazka-o-tsare-saltane.md](../items/2022-04-07_mariinsky_skazka-o-tsare-saltane.md) |
 | 2022-04-06 | Троянцы | Мариинский театр / Мариинский-2 | [items/2022-04-06_mariinsky_troyantsy.md](../items/2022-04-06_mariinsky_troyantsy.md) |
 | 2022-04-04 | Аида | Мариинский театр / Мариинский-2 | [items/2022-04-04_mariinsky_aida.md](../items/2022-04-04_mariinsky_aida.md) |
+| 2021-03-25 | Сон в летнюю ночь | Мариинский театр / Концертный зал | [items/2021-03-25_mariinsky_son-v-letnyuyu-noch.md](../items/2021-03-25_mariinsky_son-v-letnyuyu-noch.md) |
 
 <!-- Provisional: акты, ещё не оформленные полноценным файлом в items/, фиксируются строкой
      ниже (что известно), затем повышаются до файла. -->
