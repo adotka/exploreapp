@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Генератор статического сайта MindHorizon.
+"""Генератор статического сайта «Йорик».
 
 Читает items/*.md с Type: performance, строит взаимосвязанный сайт на русском:
 спектакли ↔ люди ↔ произведения ↔ театры и сцены. Пишет в _site/ (гитигнорится;
@@ -48,6 +48,7 @@ header .wrap { display: flex; flex-wrap: wrap; align-items: baseline;
                gap: 0.5rem 1.5rem; padding: 1rem 1.25rem; }
 .brand { font-weight: bold; font-size: 1.15rem; color: var(--fg);
          text-decoration: none; }
+.tagline { font-style: italic; color: var(--muted); font-size: 0.9rem; }
 nav { display: flex; flex-wrap: wrap; gap: 1rem; }
 nav a { color: var(--muted); text-decoration: none; }
 nav a:hover, nav a.here { color: var(--accent); }
@@ -193,12 +194,13 @@ def page(root: str, title: str, active: str, body: str) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{esc(title)} — MindHorizon</title>
+<title>{esc(title)} — Йорик</title>
 <style>{CSS}</style>
 </head>
 <body>
 <header><div class="wrap">
-  <a class="brand" href="{root}index.html">MindHorizon</a>
+  <a class="brand" href="{root}index.html">Йорик</a>
+  <span class="tagline">Я знал его…</span>
   <nav>{nav}</nav>
 </div></header>
 <main><div class="wrap">
@@ -416,7 +418,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Сборка сайта MindHorizon из items/")
+    ap = argparse.ArgumentParser(description="Сборка сайта «Йорик» из items/")
     repo = Path(__file__).resolve().parent.parent
     ap.add_argument("--items", type=Path, default=repo / "items")
     ap.add_argument("--out", type=Path, default=repo / "_site")

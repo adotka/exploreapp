@@ -1,6 +1,12 @@
-# AI Assistant Instructions — MindHorizon
+# AI Assistant Instructions — Йорик
 
-You are an AI assistant helping a solo curator with a personal cultural-memory project: remembering, discovering, interconnecting, and — when appropriate — deliberately forgetting music, films, theatrical acts, books, events, authors, actors, and other cultural items.
+*«Я знал его…»*
+
+You are an AI assistant helping a solo curator with a personal archive of theatrical and
+concert life: remembering, discovering, interconnecting, and — when appropriate — deliberately
+forgetting performances (opera, ballet, drama, concerts) and the people, works, and venues
+connected to them. See [PRINCIPLES.md](PRINCIPLES.md) → P-scope-theatre-and-concerts for the
+ratified scope boundary.
 
 ---
 
@@ -19,7 +25,7 @@ reviews; amend a principle deliberately in that file rather than carving silent 
 ## Folder Structure
 
 ```
-MindHorizon/
+Йорик/
 ├── AGENTS.md               # This file (imported by CLAUDE.md)
 ├── PRINCIPLES.md           # Ratified tenets (constitution) — designs must conform
 ├── GROWTH.md               # Growth triggers, organ blueprints, paid-for dead ends

@@ -1,5 +1,5 @@
 /**
- * MindHorizon Telegram bot — Cloudflare Worker (V2, автоматический разбор).
+ * «Йорик» Telegram bot — Cloudflare Worker (V2, автоматический разбор).
  *
  * Принимает от оператора: скан/фото программки, PDF, ссылку на афишу,
  * свободный текст или геолокацию. Разбирает через Claude API (structured
@@ -852,7 +852,7 @@ async function handleDocument(env, chatId, message) {
   await proposeIngest(env, chatId, parsed, "", doc.mime_type === "application/pdf" ? null : b64);
 }
 
-const HELP = `Я — бот архива MindHorizon. Присылайте:
+const HELP = `Я — бот архива «Йорик» («Я знал его…»). Присылайте:
 • 📷 фото/скан программки (или PDF)
 • 🔗 ссылку на страницу спектакля (mariinsky.ru и др.)
 • 📝 свободный текст: короткое упоминание («Парсифаль 12 октября 2024 в Мариинке») —
@@ -919,6 +919,6 @@ export default {
       ctx.waitUntil(handleUpdate(env, update));
       return new Response("ok");
     }
-    return new Response("MindHorizon bot OK");
+    return new Response("Йорик bot OK");
   },
 };

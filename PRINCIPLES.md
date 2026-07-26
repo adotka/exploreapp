@@ -1,4 +1,4 @@
-# PRINCIPLES — MindHorizon Constitution
+# PRINCIPLES — Йорик Constitution
 
 Durable tenets that govern this project's design decisions. These are the standing rules;
 work must conform to them. When a principle conflicts with convenience, the principle wins —
@@ -12,6 +12,35 @@ Principles enter this file **only by explicit operator confirmation** — the ag
 the operator ratifies. Never self-added.
 
 ---
+
+## P-scope-theatre-and-concerts
+
+**Rule:** The archive's scope is theatrical performances and concert events actually attended —
+opera, ballet, drama, concerts — and the people (cast, staff, composers/authors), works, and
+venues connected to them. It is not a general-purpose multi-medium cultural-memory archive;
+recorded music, films, and books as standalone categories are out of scope.
+
+**Why:** Genesis imagined a broader multi-medium scope (music, films, theatrical acts, books,
+events, authors, actors, and other cultural items). In practice, every organ built since —
+`items/_template_performance.md`, `playbills/`, `inventory/venues.md`,
+`inventory/performances.md`, the Telegram bot's playbill parsing and cross-memory feature — has
+been built exclusively around attended live theatrical and concert events. Carrying the wider
+aspirational scope in the constitution while nothing supports it invites organs and design
+decisions that don't fit the archive that actually exists. This narrows the constitution to
+match established practice, per the meta-principle "structure earns its keep through use"
+(GROWTH.md).
+
+**How to apply:** New items, inventory entries, and future organs (views, discovery flows,
+helpers) are scoped to attended theatrical/concert performances and the people, works, and
+venues tied to them. A person or work enters the archive only via a specific attended
+performance — not as a standalone "I like this musician/author" entry. Reopening a broader
+medium (e.g. cinema, recorded albums, books read but not performed) requires a deliberate future
+amendment to this principle, not a quiet exception.
+
+**Known exceptions:** none.
+
+*(Ratified 2026-07-26 by the operator, narrowing genesis's broader multi-medium scope as part of
+the MindHorizon → Йорик rename.)*
 
 ## P-deliberate-forgetting
 
