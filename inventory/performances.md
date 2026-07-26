@@ -36,6 +36,7 @@
 | 2021-03-27 | Жизель | Мариинский театр / Историческая сцена | [items/2021-03-27_mariinsky_zhizel.md](../items/2021-03-27_mariinsky_zhizel.md) |
 | 2021-03-26 | Дебюсси. Стравинский. Равель. Скрябин | Мариинский театр / Концертный зал | [items/2021-03-26_mariinsky_debyussi-stravinskii-ravel-skryabin.md](../items/2021-03-26_mariinsky_debyussi-stravinskii-ravel-skryabin.md) |
 | 2021-03-25 | Сон в летнюю ночь | Мариинский театр / Концертный зал | [items/2021-03-25_mariinsky_son-v-letnyuyu-noch.md](../items/2021-03-25_mariinsky_son-v-letnyuyu-noch.md) |
+| 2020-03-07 | Зал Зарядье "Океан звука" | Концертный зал "Зарядье" /  | [items/2020-03-07_zaryadye_zal-zaryade-okean-zvuka.md](../items/2020-03-07_zaryadye_zal-zaryade-okean-zvuka.md) |
 
 <!-- Provisional: акты, ещё не оформленные полноценным файлом в items/, фиксируются строкой
      ниже (что известно), затем повышаются до файла. -->
