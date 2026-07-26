@@ -441,7 +441,7 @@ ${f.join("\n")}
 
 ${roles(p.staff || [])}
 
-## Составы
+## Состав
 
 ${roles(p.cast || [])}
 
@@ -586,7 +586,7 @@ function preview(p, known) {
     p.author ? `Автор: ${p.author}` : "",
     `${p.theatre}${p.scene ? " · " + p.scene : ""}${p.date ? " · " + p.date : ""}${p.time ? " " + p.time : ""}`,
     p.staff && p.staff.length ? `Постановщики: ${p.staff.length}` : "",
-    p.cast && p.cast.length ? `Составы: ${p.cast.map((c) => `${c.role} — ${c.names.join(", ")}`).slice(0, 6).join("; ")}` : "",
+    p.cast && p.cast.length ? `Состав: ${p.cast.map((c) => `${c.role} — ${c.names.join(", ")}`).slice(0, 6).join("; ")}` : "",
   ].filter(Boolean);
   if (known.length) {
     lines.push("", "👀 <b>Вы уже встречали:</b>", ...known);
@@ -641,9 +641,17 @@ async function confirmIngest(env, cb) {
   await commitFiles(env, files, `bot: ingest ${p.title} (${p.date})\n\nПодтверждено оператором в Telegram.`);
   await env.PENDING.delete(key);
   await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Добавлено ✅" });
+
+  let known = [];
+  try {
+    const index = await (await fetch(`${env.SITE_URL}/data/index.json`, { cf: { cacheTtl: 60 } })).json();
+    known = knownPeopleLines(index, peopleOf(p));
+  } catch (e) { /* индекс ещё не опубликован — не критично */ }
+
   await tg(env, "editMessageText", {
     chat_id: cb.message.chat.id, message_id: cb.message.message_id,
-    text: `✅ Добавлено: ${p.title} (${p.date}).\nСайт пересоберётся через ~1 мин: ${env.SITE_URL}/`,
+    text: preview(p, known) + `\n\n✅ Добавлено в архив. Сайт пересоберётся через ~1 мин: ${env.SITE_URL}/`,
+    parse_mode: "HTML",
   });
 }
 

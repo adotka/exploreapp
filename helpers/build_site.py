@@ -69,9 +69,6 @@ dd { margin: 0; }
 ul.plain { list-style: none; padding: 0; }
 ul.plain li { padding: 0.2rem 0; }
 .empty { color: var(--muted); font-style: italic; margin: 2rem 0; }
-footer { border-top: 1px solid var(--line); color: var(--muted);
-         font-size: 0.85rem; }
-footer .wrap { padding: 1rem 1.25rem; }
 """
 
 NAV = [
@@ -113,7 +110,7 @@ class Performance:
         self.source = fields.get("Источник", "")
         self.status = fields.get("Status", "active")
         self.staff = parse_roles(sections.get("Постановщики", []))
-        self.cast = parse_roles(sections.get("Составы", []))
+        self.cast = parse_roles(sections.get("Состав", []))
         self.impressions = "\n".join(sections.get("Впечатления", [])).strip()
 
     @property
@@ -206,7 +203,6 @@ def page(root: str, title: str, active: str, body: str) -> str:
 <main><div class="wrap">
 {body}
 </div></main>
-<footer><div class="wrap">Сгенерировано автоматически из items/ — правки только в исходных файлах.</div></footer>
 </body>
 </html>
 """
@@ -228,21 +224,25 @@ def link_theatre(root, theatre):
     return f'<a href="{root}sceny/{slugify(theatre)}.html">{esc(theatre)}</a>'
 
 
-def perf_row(root, p):
-    venue = ""
-    if p.theatre:
-        venue = link_theatre(root, p.theatre)
-        if p.scene:
-            venue += f" · {esc(p.scene)}"
-    return (f"<tr><td>{esc(p.date)}</td><td>{link_perf(root, p)}</td>"
-            f"<td>{esc(p.genre)}</td><td>{venue}</td></tr>")
+def perf_row(root, p, show_venue=True):
+    cells = f"<td>{esc(p.date)}</td><td>{link_perf(root, p)}</td><td>{esc(p.genre)}</td>"
+    if show_venue:
+        venue = ""
+        if p.theatre:
+            venue = link_theatre(root, p.theatre)
+            if p.scene:
+                venue += f" · {esc(p.scene)}"
+        cells += f"<td>{venue}</td>"
+    return f"<tr>{cells}</tr>"
 
 
-def perf_table(root, perfs):
-    rows = "\n".join(perf_row(root, p) for p in perfs)
-    return ('<div class="tablewrap"><table>'
-            "<tr><th>Дата</th><th>Название</th><th>Жанр</th><th>Театр / Сцена</th></tr>"
-            f"{rows}</table></div>")
+def perf_table(root, perfs, show_venue=True):
+    rows = "\n".join(perf_row(root, p, show_venue) for p in perfs)
+    header = "<tr><th>Дата</th><th>Название</th><th>Жанр</th>"
+    if show_venue:
+        header += "<th>Театр / Сцена</th>"
+    header += "</tr>"
+    return f'<div class="tablewrap"><table>{header}{rows}</table></div>'
 
 
 def render_impressions(text: str) -> str:
@@ -320,7 +320,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
             rows = "".join(
                 f"<li>{esc(role)} — " + ", ".join(link_person(root, n) for n in names) + "</li>"
                 for role, names in p.cast)
-            body.append(f'<h2>Составы</h2><ul class="plain">{rows}</ul>')
+            body.append(f'<h2>Состав</h2><ul class="plain">{rows}</ul>')
         if p.impressions:
             body.append(f"<h2>Впечатления</h2>{render_impressions(p.impressions)}")
         (out_dir / "spektakli" / f"{p.slug}.html").write_text(
@@ -385,11 +385,11 @@ def build(items_dir: Path, out_dir: Path) -> int:
         scenes = sorted({p.scene for p in ps if p.scene})
         for scene in scenes:
             scoped = [p for p in ps if p.scene == scene]
-            parts.append(f"<h2>{esc(scene)}</h2>" + perf_table(root, scoped))
+            parts.append(f"<h2>{esc(scene)}</h2>" + perf_table(root, scoped, show_venue=False))
         unscoped = [p for p in ps if not p.scene]
         if unscoped:
             title = "Без указания сцены" if scenes else "Спектакли"
-            parts.append(f"<h2>{title}</h2>" + perf_table(root, unscoped))
+            parts.append(f"<h2>{title}</h2>" + perf_table(root, unscoped, show_venue=False))
         (out_dir / "sceny" / f"{slugify(theatre)}.html").write_text(
             page(root, theatre, "sceny/index.html", "\n".join(parts)), encoding="utf-8")
 
