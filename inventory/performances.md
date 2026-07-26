@@ -32,6 +32,7 @@
 | 2022-01-03 | Любовь к трем апельсинам (полусценическое исполнение) | Мариинский театр / Концертный зал | [items/2022-01-03_mariinsky_lyubov-k-trem-apelsinam-polustsenicheskoe-ispolnenie.md](../items/2022-01-03_mariinsky_lyubov-k-trem-apelsinam-polustsenicheskoe-ispolnenie.md) |
 | 2022-01-02 | Летучая мышь | Мариинский театр / Мариинский-2 | [items/2022-01-02_mariinsky_letuchaya-mysh.md](../items/2022-01-02_mariinsky_letuchaya-mysh.md) |
 | 2021-03-27 | Жизель | Мариинский театр / Историческая сцена | [items/2021-03-27_mariinsky_zhizel.md](../items/2021-03-27_mariinsky_zhizel.md) |
+| 2021-03-26 | Дебюсси. Стравинский. Равель. Скрябин | Мариинский театр / Концертный зал | [items/2021-03-26_mariinsky_debyussi-stravinskii-ravel-skryabin.md](../items/2021-03-26_mariinsky_debyussi-stravinskii-ravel-skryabin.md) |
 | 2021-03-25 | Сон в летнюю ночь | Мариинский театр / Концертный зал | [items/2021-03-25_mariinsky_son-v-letnyuyu-noch.md](../items/2021-03-25_mariinsky_son-v-letnyuyu-noch.md) |
 
 <!-- Provisional: акты, ещё не оформленные полноценным файлом в items/, фиксируются строкой
