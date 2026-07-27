@@ -91,8 +91,8 @@ a.has-tip .tip img { display: block; width: 64px; height: 64px; object-fit: cove
 """
 
 NAV = [
-    ("index.html", "Спектакли"),
-    ("lyudi/index.html", "Люди"),
+    ("index.html", "Представления"),
+    ("lyudi/index.html", "Участники"),
     ("proizvedeniya/index.html", "Произведения"),
     ("sceny/index.html", "Театры и сцены"),
 ]
@@ -219,7 +219,8 @@ def load_performances(items_dir: Path):
 
 
 def load_people_profiles(people_dir: Path):
-    """people/*.md — необязательные профили (био/фото) для людей, встреченных повторно."""
+    """people/*.md — необязательные профили (био/фото) для людей (встреченных повторно, или
+    авторов/коллективов, которые заводятся всегда — см. people/_template.md)."""
     profiles = {}
     if not people_dir.is_dir():
         return profiles
@@ -227,7 +228,7 @@ def load_people_profiles(people_dir: Path):
         if path.name.startswith("_"):
             continue
         fields, _sections = parse_item(path)
-        if fields.get("Type") != "person":
+        if fields.get("Type") not in ("person", "collective"):
             continue
         name = fields.get("Имя", "").strip()
         if not name:
@@ -237,6 +238,31 @@ def load_people_profiles(people_dir: Path):
             "short_bio": fields.get("Коротко", "").strip(),
             "bio": fields.get("Био", "").strip(),
         }
+    return profiles
+
+
+def load_venue_profiles(venues_path: Path):
+    """inventory/venues.md — короткое описание на театр в целом (не на отдельную сцену):
+    первый абзац текста под каждым заголовком «## <Театр>», до списка сцен/адресов."""
+    profiles = {}
+    if not venues_path.is_file():
+        return profiles
+    text = COMMENT_RE.sub("", venues_path.read_text(encoding="utf-8"))
+    for block in re.split(r"(?m)^## ", text)[1:]:
+        lines = block.split("\n")
+        theatre = lines[0].strip()
+        desc_lines = []
+        for line in lines[1:]:
+            stripped = line.strip()
+            if stripped.startswith("-"):
+                break
+            if not stripped:
+                if desc_lines:
+                    break
+                continue
+            desc_lines.append(stripped)
+        if theatre and desc_lines:
+            profiles[theatre] = " ".join(desc_lines)
     return profiles
 
 
@@ -363,6 +389,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
     perfs = load_performances(items_dir)
     profiles = load_people_profiles(items_dir.parent / "people")
     work_profiles = load_work_profiles(items_dir.parent / "works")
+    venue_profiles = load_venue_profiles(items_dir.parent / "inventory" / "venues.md")
 
     people = defaultdict(list)   # имя -> [(роль, perf)]
     works = defaultdict(list)    # название -> [perf]
@@ -396,11 +423,11 @@ def build(items_dir: Path, out_dir: Path) -> int:
 
     # Главная — хронология спектаклей
     if perfs:
-        body = f"<h1>Спектакли</h1><p class=\"meta\">Всего: {len(perfs)}</p>" + perf_table("", perfs)
+        body = f"<h1>Представления</h1><p class=\"meta\">Всего: {len(perfs)}</p>" + perf_table("", perfs)
     else:
-        body = ("<h1>Спектакли</h1><p class=\"empty\">Архив пока пуст — добавьте первый "
+        body = ("<h1>Представления</h1><p class=\"empty\">Архив пока пуст — добавьте первый "
                 "спектакль в items/ по шаблону items/_template_performance.md.</p>")
-    (out_dir / "index.html").write_text(page("", "Спектакли", "index.html", body), encoding="utf-8")
+    (out_dir / "index.html").write_text(page("", "Представления", "index.html", body), encoding="utf-8")
 
     # Страницы спектаклей
     for p in perfs:
@@ -461,7 +488,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
         (out_dir / "spektakli" / f"{p.slug}.html").write_text(
             page(root, p.title, "", "\n".join(body)), encoding="utf-8")
 
-    # Люди
+    # Участники
     root = "../"
     if people:
         rows = "".join(
@@ -487,11 +514,11 @@ def build(items_dir: Path, out_dir: Path) -> int:
   apply();
 })();
 </script>"""
-        body = f'<h1>Люди</h1>{filter_ui}<ul class="plain" id="people-list">{rows}</ul>{script}'
+        body = f'<h1>Участники</h1>{filter_ui}<ul class="plain" id="people-list">{rows}</ul>{script}'
     else:
-        body = '<h1>Люди</h1><p class="empty">Пока никого — люди появятся из программок.</p>'
+        body = '<h1>Участники</h1><p class="empty">Пока никого — участники появятся из программок.</p>'
     (out_dir / "lyudi" / "index.html").write_text(
-        page(root, "Люди", "lyudi/index.html", body), encoding="utf-8")
+        page(root, "Участники", "lyudi/index.html", body), encoding="utf-8")
     for name, entries in people.items():
         items = "".join(
             f"<li>{esc(role)} — {link_perf(root, p)} "
@@ -556,13 +583,15 @@ def build(items_dir: Path, out_dir: Path) -> int:
         page(root, "Театры и сцены", "sceny/index.html", body), encoding="utf-8")
     for theatre, ps in theatres.items():
         parts = [f"<h1>{esc(theatre)}</h1>"]
+        if venue_profiles.get(theatre):
+            parts.append(f"<p>{esc(venue_profiles[theatre])}</p>")
         scenes = sorted({p.scene for p in ps if p.scene})
         for scene in scenes:
             scoped = [p for p in ps if p.scene == scene]
             parts.append(f"<h2>{esc(scene)}</h2>" + perf_table(root, scoped, show_venue=False))
         unscoped = [p for p in ps if not p.scene]
         if unscoped:
-            title = "Без указания сцены" if scenes else "Спектакли"
+            title = "Без указания сцены" if scenes else "Представления"
             parts.append(f"<h2>{title}</h2>" + perf_table(root, unscoped, show_venue=False))
         (out_dir / "sceny" / f"{slugify(theatre)}.html").write_text(
             page(root, theatre, "sceny/index.html", "\n".join(parts)), encoding="utf-8")
@@ -585,6 +614,11 @@ def build(items_dir: Path, out_dir: Path) -> int:
         "works": {
             title: {"documented": title in work_profiles}
             for title in sorted(works)
+        },
+        "profiled_people": sorted(profiles.keys()),
+        "venues": {
+            theatre: {"documented": theatre in venue_profiles}
+            for theatre in sorted(theatres)
         },
     }
     (out_dir / "data" / "index.json").write_text(

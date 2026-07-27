@@ -5,12 +5,15 @@
  * свободный текст или геолокацию. Разбирает через Claude API (structured
  * outputs), показывает предпросмотр + «вы уже встречали …», и по кнопке
  * подтверждения коммитит в GitHub: items/<...>.md + строку в
- * inventory/performances.md (+ скан в playbills/). Для произведений, ещё не
- * описанных в works/ (по данным опубликованного data/index.json), заодно
- * составляет короткое описание (+ либретто/пересказ сюжета, где есть сюжет) и
- * показывает его в предпросмотре — коммитится только вместе с остальным, по
- * той же кнопке подтверждения (см. worksOf/draftWorkNotes/renderWork). Push в
- * main автоматически пересобирает сайт (GitHub Actions → Pages).
+ * inventory/performances.md (+ скан в playbills/). Для произведений, авторов,
+ * коллективов-исполнителей и театров, ещё не описанных в works/ / people/ /
+ * inventory/venues.md (по данным опубликованного data/index.json), заодно
+ * составляет короткое описание (+ либретто/пересказ сюжета для произведений с
+ * сюжетом) и показывает его в предпросмотре — коммитится только вместе с
+ * остальным, по той же кнопке подтверждения (см. worksOf/draftWorkNotes/
+ * renderWork и authorsOf/collectivesOf/draftParticipantNotes/renderParticipant/
+ * insertVenueDescription). Push в main автоматически пересобирает сайт
+ * (GitHub Actions → Pages).
  *
  * Secrets (wrangler secret put): TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
  *   ANTHROPIC_API_KEY, GITHUB_TOKEN (fine-grained PAT, contents RW на репо).
@@ -613,6 +616,112 @@ export function knownPeopleLines(index, names) {
   return lines;
 }
 
+/** Авторы исходного произведения (композитор/драматург) — заводятся всегда, даже при
+ *  единственной встрече, в отличие от остальных участников (см. people/_template.md). */
+export function authorsOf(p) {
+  const names = new Set();
+  const add = (n) => { if (n && n.trim() && !/^Неизвестн/.test(n.trim())) names.add(n.replace(/\s*\(.*?\)\s*/g, " ").trim()); };
+  add(p.author);
+  for (const w of p.program || []) add(w.author);
+  return [...names];
+}
+
+/** Коллективы-исполнители (оркестр/хор/ансамбль) — распознаются по точной роли в
+ *  ## Постановщики/## Состав, как их описывает PARSE_PROMPT. Заводятся всегда, как и авторы. */
+export function collectivesOf(p) {
+  const names = new Set();
+  for (const grp of [...(p.staff || []), ...(p.cast || [])]) {
+    if (!/^(оркестр|хор|ансамбль)$/i.test((grp.role || "").trim())) continue;
+    for (const n of grp.names || []) if (n.trim()) names.add(n.trim());
+  }
+  return [...names];
+}
+
+/** Фильтрует к тем, для кого ещё нет people/<slug>.md (по опубликованному индексу). */
+export function undocumentedParticipants(index, names) {
+  const profiled = new Set(index.profiled_people || []);
+  const seen = new Set();
+  return names.filter((n) => {
+    if (seen.has(n) || profiled.has(n)) return false;
+    seen.add(n);
+    return true;
+  });
+}
+
+const PARTICIPANT_NOTES_SCHEMA = {
+  type: "object", additionalProperties: false,
+  required: ["entries"],
+  properties: {
+    entries: {
+      type: "array",
+      items: {
+        type: "object", additionalProperties: false,
+        required: ["name", "description"],
+        properties: { name: { type: "string" }, description: { type: "string" } },
+      },
+    },
+  },
+};
+
+const PARTICIPANT_NOTES_PROMPT = `Для каждой позиции ниже (тип в квадратных скобках, затем имя)
+дай короткое (2–3 предложения) описание:
+- [автор]: композитор/драматург — кто это, эпоха, чем известен.
+- [коллектив]: оркестр/хор/ансамбль — что это за коллектив, при каком театре/учреждении.
+- [театр]: концертный зал/театр — что это за площадка, где находится, чем примечательна.
+Используй только общеизвестные, надёжно установленные факты. Если ты не уверен (незнакомое
+имя, неоднозначная атрибуция) — верни пустую строку для description, НИЧЕГО не выдумывай.
+Верни ровно столько объектов, сколько позиций в списке, В ТОМ ЖЕ порядке; поле name — скопируй
+точно как дано.
+
+Список:
+`;
+
+async function draftParticipantNotes(env, entries) {
+  if (!entries.length) return [];
+  const listText = entries.map((e, i) => `${i + 1}. [${e.kind}] ${e.name}`).join("\n");
+  const result = await claude(env, [
+    { type: "text", text: PARTICIPANT_NOTES_PROMPT + listText },
+  ], PARTICIPANT_NOTES_SCHEMA, 4096);
+  const notes = result.entries || [];
+  return entries.map((e, i) => ({ ...e, description: notes[i]?.description || "" }));
+}
+
+export function renderParticipant(entry) {
+  const today = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
+  const type = entry.kind === "коллектив" ? "collective" : "person";
+  return `# ${entry.name}
+
+**Type:** ${type}
+**Status:** active
+
+## Facts
+
+- **Имя:** ${entry.name}
+- **Фото:**
+- **Коротко:** ${entry.description}
+- **Био:** ${entry.description}
+
+## History
+
+- ${today} — добавлено телеграм-ботом (bot/worker.js) при разборе программки, подтверждено оператором
+`;
+}
+
+/** Вставляет короткое описание театра в inventory/venues.md — под существующий заголовок
+ *  «## <театр>», если он уже есть (площадка известна, но пока без описания), иначе добавляет
+ *  новую секцию в конец файла (адрес/координаты остаются для ручного заполнения — см.
+ *  runbook/bot.md). */
+export function insertVenueDescription(content, theatre, description) {
+  const heading = `## ${theatre}`;
+  const idx = content.indexOf(heading);
+  if (idx === -1) {
+    const sep = content.endsWith("\n") ? "" : "\n";
+    return `${content}${sep}\n${heading}\n\n${description}\n\n- (адрес и координаты не указаны — уточнить)\n`;
+  }
+  const afterHeading = idx + heading.length;
+  return `${content.slice(0, afterHeading)}\n\n${description}${content.slice(afterHeading)}`;
+}
+
 // ------------------------------------------------------------- GitHub commit
 
 async function gh(env, path, init = {}) {
@@ -702,7 +811,7 @@ function stripHtml(html) {
 
 // ------------------------------------------------------------- основной поток
 
-function preview(p, known, workNotes) {
+function preview(p, known, workNotes, participantNotes) {
   const lines = [
     `🎭 <b>${p.title}</b>${p.genre ? ` (${p.genre})` : ""}`,
     !p.program?.length && p.author ? `Автор: ${p.author}` : "",
@@ -721,6 +830,13 @@ function preview(p, known, workNotes) {
       lines.push(`• <i>${w.title}</i> — ${w.description}${w.libretto ? " (+ либретто)" : ""}`);
     }
   }
+  const withParticipants = (participantNotes || []).filter((e) => e.description);
+  if (withParticipants.length) {
+    lines.push("", "👤 <b>Новые участники (описание составлено ботом):</b>");
+    for (const e of withParticipants) {
+      lines.push(`• [${e.kind}] <i>${e.name}</i> — ${e.description}`);
+    }
+  }
   return lines.join("\n");
 }
 
@@ -731,18 +847,26 @@ async function proposeIngest(env, chatId, parsed, sourceUrl, photos) {
   }
   let known = [];
   let workNotes = [];
+  let participantNotes = [];
   try {
     const index = await (await fetch(`${env.SITE_URL}/data/index.json`, { cf: { cacheTtl: 60 } })).json();
     known = knownPeopleLines(index, peopleOf(parsed));
     const undocumented = undocumentedWorks(index, worksOf(parsed));
     if (undocumented.length) workNotes = await draftWorkNotes(env, undocumented);
+
+    const entries = [
+      ...undocumentedParticipants(index, authorsOf(parsed)).map((name) => ({ kind: "автор", name })),
+      ...undocumentedParticipants(index, collectivesOf(parsed)).map((name) => ({ kind: "коллектив", name })),
+      ...(parsed.theatre && !index.venues?.[parsed.theatre]?.documented ? [{ kind: "театр", name: parsed.theatre }] : []),
+    ];
+    if (entries.length) participantNotes = await draftParticipantNotes(env, entries);
   } catch (e) { /* индекс ещё не опубликован, или черновик описаний не удался — не критично */ }
 
   const key = crypto.randomUUID();
-  await env.PENDING.put(key, JSON.stringify({ parsed, sourceUrl, photos: photos || [], workNotes }), { expirationTtl: 86400 });
+  await env.PENDING.put(key, JSON.stringify({ parsed, sourceUrl, photos: photos || [], workNotes, participantNotes }), { expirationTtl: 86400 });
   await tg(env, "sendMessage", {
     chat_id: chatId,
-    text: preview(parsed, known, workNotes) + "\n\nДобавить в архив?",
+    text: preview(parsed, known, workNotes, participantNotes) + "\n\nДобавить в архив?",
     parse_mode: "HTML",
     reply_markup: {
       inline_keyboard: [[
@@ -760,7 +884,7 @@ async function confirmIngest(env, cb) {
     await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Устарело — пришлите ещё раз" });
     return;
   }
-  const { parsed: p, sourceUrl, photos, workNotes } = JSON.parse(raw);
+  const { parsed: p, sourceUrl, photos, workNotes, participantNotes } = JSON.parse(raw);
   const fileName = `${p.date}_${theatreSlug(p.theatre)}_${slugify(p.title)}.md`;
   const files = [];
   const playbillPaths = [];
@@ -778,9 +902,21 @@ async function confirmIngest(env, cb) {
     const genre = w.title === p.title && !p.program?.length ? p.genre : "";
     files.push({ path: `works/${slugify(w.title)}.md`, content: renderWork({ ...w, genre }) });
   }
+  const newParticipants = (participantNotes || []).filter((e) => e.description && e.kind !== "театр");
+  for (const e of newParticipants) {
+    files.push({ path: `people/${slugify(e.name)}.md`, content: renderParticipant(e) });
+  }
+  const newVenue = (participantNotes || []).find((e) => e.kind === "театр" && e.description);
+  if (newVenue) {
+    const venues = await getRawFile(env, "inventory/venues.md");
+    files.push({ path: "inventory/venues.md", content: insertVenueDescription(venues, newVenue.name, newVenue.description) });
+  }
   const confirmedBy = cb.from.username ? `@${cb.from.username}` : cb.from.first_name || String(cb.from.id);
   const worksNote = newWorks.length ? `\n\nНовые произведения: ${newWorks.map((w) => w.title).join(", ")}.` : "";
-  await commitFiles(env, files, `bot: ingest ${p.title} (${p.date})\n\nПодтверждено в Telegram: ${confirmedBy}.${worksNote}`);
+  const participantsNote = newParticipants.length || newVenue
+    ? `\n\nНовые участники: ${[...newParticipants.map((e) => e.name), ...(newVenue ? [newVenue.name] : [])].join(", ")}.`
+    : "";
+  await commitFiles(env, files, `bot: ingest ${p.title} (${p.date})\n\nПодтверждено в Telegram: ${confirmedBy}.${worksNote}${participantsNote}`);
   await env.PENDING.delete(key);
   await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Добавлено ✅" });
 
@@ -790,8 +926,11 @@ async function confirmIngest(env, cb) {
     const index = await (await fetch(`${env.SITE_URL}/data/index.json`, { cf: { cacheTtl: 60 } })).json();
     known = knownPeopleLines(index, peopleOf(p));
     // Индекс отражает состояние ДО этого коммита — ровно 1 запись значит, что после
-    // добавления текущего спектакля человек станет повторным впервые.
-    newlyRecurring = peopleOf(p).filter((name) => (index.people?.[name]?.length || 0) === 1);
+    // добавления текущего спектакля человек станет повторным впервые. Авторы/коллективы
+    // исключены — им профиль уже написан этим же коммитом (newParticipants выше), не нужно
+    // просить оператора собрать био вручную ещё раз.
+    const alreadyProfiledNow = new Set(newParticipants.map((e) => e.name));
+    newlyRecurring = peopleOf(p).filter((name) => !alreadyProfiledNow.has(name) && (index.people?.[name]?.length || 0) === 1);
   } catch (e) { /* индекс ещё не опубликован — не критично */ }
 
   const recurringNote = newlyRecurring.length
@@ -800,7 +939,7 @@ async function confirmIngest(env, cb) {
 
   await tg(env, "editMessageText", {
     chat_id: cb.message.chat.id, message_id: cb.message.message_id,
-    text: preview(p, known, workNotes) + `\n\n✅ Добавлено в архив. Сайт пересоберётся через ~1 мин: ${env.SITE_URL}/` + recurringNote,
+    text: preview(p, known, workNotes, participantNotes) + `\n\n✅ Добавлено в архив. Сайт пересоберётся через ~1 мин: ${env.SITE_URL}/` + recurringNote,
     parse_mode: "HTML",
   });
 }

@@ -93,11 +93,13 @@ Never build structure ahead of the pain that justifies it.
   file once identified or once it needs its own record.
 - Raw exports from external systems are never edited; sanitized copies are safe for sharing.
 - **Automated (bot) commits.** The Telegram bot (bot/, runbook/bot.md) may commit **project
-  data only** (items/, inventory/, playbills/, works/) — never project mind, never sessions —
-  and only after the operator confirms the specific content (per
+  data only** (items/, inventory/, playbills/, works/, people/) — never project mind, never
+  sessions — and only after the operator confirms the specific content (per
   P-operator-confirms-automated-writes). This includes bot-drafted `works/<slug>.md`
-  description/libretto text for compositions not yet documented — the draft is shown in the
-  same confirmation preview as the rest of the ingestion, never committed silently.
+  description/libretto text for compositions, `people/<slug>.md` short descriptions for authors
+  and collectives, and short venue descriptions appended to `inventory/venues.md` — all not yet
+  documented at ingestion time, all shown in the same confirmation preview as the rest of the
+  ingestion, never committed silently.
   Bot commits are prefixed `bot:` and carry no session log; the commit itself is the record.
   The next human session's retrospective covers accumulated bot ingestions.
 
