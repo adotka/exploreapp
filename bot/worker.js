@@ -10,7 +10,9 @@
  *
  * Secrets (wrangler secret put): TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
  *   ANTHROPIC_API_KEY, GITHUB_TOKEN (fine-grained PAT, contents RW на репо).
- * Vars (wrangler.toml): GITHUB_REPO, SITE_URL, MODEL, OPERATOR_CHAT_ID.
+ * Vars (wrangler.toml): GITHUB_REPO, SITE_URL, MODEL, ALLOWED_CHAT_IDS (список
+ *   через запятую — несколько доверенных Telegram-аккаунтов пишут в один и тот
+ *   же архив; см. runbook/bot.md).
  * KV binding: PENDING (ожидающие подтверждения разборы, TTL 24 ч).
  *
  * Развёртывание и правила: runbook/bot.md.
@@ -666,7 +668,8 @@ async function confirmIngest(env, cb) {
   files.push({ path: `items/${fileName}`, content: renderItem(p, sourceUrl, playbillPaths.join(", ")) });
   const inv = await getRawFile(env, "inventory/performances.md");
   files.push({ path: "inventory/performances.md", content: insertInventoryRow(inv, p, fileName) });
-  await commitFiles(env, files, `bot: ingest ${p.title} (${p.date})\n\nПодтверждено оператором в Telegram.`);
+  const confirmedBy = cb.from.username ? `@${cb.from.username}` : cb.from.first_name || String(cb.from.id);
+  await commitFiles(env, files, `bot: ingest ${p.title} (${p.date})\n\nПодтверждено в Telegram: ${confirmedBy}.`);
   await env.PENDING.delete(key);
   await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Добавлено ✅" });
 
@@ -952,10 +955,20 @@ const HELP = `Я — бот архива «Йорик» («Я знал его…
 • 📍 геолокацию из театра — угадаю, что вы сейчас смотрите
 Каждый разбор я показываю на подтверждение перед записью в архив.`;
 
+/** ALLOWED_CHAT_IDS — список Telegram user id через запятую; несколько доверенных
+ *  аккаунтов (например, супруг(а) и второй личный аккаунт) пишут в один и тот же архив. */
+function isAllowed(env, id) {
+  return (env.ALLOWED_CHAT_IDS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .includes(String(id));
+}
+
 async function handleUpdate(env, update) {
   const cb = update.callback_query;
   if (cb) {
-    if (String(cb.from.id) !== String(env.OPERATOR_CHAT_ID)) return;
+    if (!isAllowed(env, cb.from.id)) return;
     try {
       if (cb.data.startsWith("c:")) await confirmIngest(env, cb);
       else if (cb.data.startsWith("p:")) await confirmPick(env, cb);
@@ -976,7 +989,7 @@ async function handleUpdate(env, update) {
   const message = update.message;
   if (!message) return;
   const chatId = message.chat.id;
-  if (String(message.from.id) !== String(env.OPERATOR_CHAT_ID)) {
+  if (!isAllowed(env, message.from.id)) {
     await tg(env, "sendMessage", { chat_id: chatId, text: "Это личный архивный бот." });
     return;
   }

@@ -11,7 +11,9 @@ id = "a4c8f804a5cd434d9b74cae3ea4e0ea0"
 GITHUB_REPO = "adotka/exploreapp"
 SITE_URL = "https://adotka.github.io/exploreapp"
 MODEL = "claude-haiku-4-5"         # дороже/точнее: "claude-opus-4-8" (лучше читает сложные сканы)
-OPERATOR_CHAT_ID = "28209146"
+# Список Telegram user id через запятую — несколько доверенных аккаунтов пишут в один
+# и тот же архив (см. runbook/bot.md, «Добавить ещё один доверенный аккаунт»).
+ALLOWED_CHAT_IDS = "28209146,1001791014,860046579"
 
 # Секреты — НЕ сюда, а через `wrangler secret put <NAME>`:
 #   TELEGRAM_BOT_TOKEN      — credential, do not expose (хранится в Cloudflare)
