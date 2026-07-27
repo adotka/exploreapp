@@ -109,5 +109,33 @@ skip per the existing "never fabricate facts" convention rather than force a res
 
 ---
 
+## P-shared-facts-own-entity
+
+**Rule:** A fact that describes a *recurring* entity (a person, a composition/work, a venue) —
+not a specific event — gets its own file, matched to event records by exact-string identity
+(name/title), never duplicated inline into every event that references it. Only genuinely
+per-event specifics (who conducted this particular showing, which cast sang it) stay inline on
+the event record.
+
+**Why:** This session needed a home for composition descriptions and librettos. Copying the
+same opera's description into every `items/*.md` that stages it would drift (edits would need
+to hit N files) and bloat the source-of-truth records with repeated content. `people/` already
+solved this exact shape of problem (bio/photo matched by exact name); `works/` (this session)
+is a second, independent instance of the same resolution — two occurrences is enough to call it
+a pattern rather than a one-off.
+
+**How to apply:** When a new fact type is proposed, first ask whether it is a property of the
+event or of a shared underlying entity the event merely references. Model the latter as its own
+file in a dedicated folder, matched by exact-string identity to how the entity is named in
+`items/*.md` — the same discipline as `people/`: identical string, no aliasing, no matching by
+filename slug.
+
+**Known exceptions:** none yet observed. If a third recurring-entity fact type (e.g. venue-level
+history) arises, apply the same resolution rather than re-deriving it.
+
+*(Ratified 2026-07-27 by the operator, during the works/ (compositions) enrichment session.)*
+
+---
+
 *Amend deliberately: change a principle here (with rationale + date) rather than carving silent
 exceptions. Add new principles with a descriptive `P-<slug>` ID (ad-hoc order — no numbering).*

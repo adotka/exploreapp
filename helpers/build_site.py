@@ -127,6 +127,7 @@ class Performance:
         self.date = fields.get("Дата", "")
         self.playbill = fields.get("Программка", "")
         self.source = fields.get("Источник", "")
+        self.description = fields.get("Описание", "")
         self.status = fields.get("Status", "active")
         self.staff = parse_roles(sections.get("Постановщики", []))
         self.cast = parse_roles(sections.get("Состав", []))
@@ -239,6 +240,29 @@ def load_people_profiles(people_dir: Path):
     return profiles
 
 
+def load_work_profiles(works_dir: Path):
+    """works/*.md — необязательные профили (описание/либретто) для произведений."""
+    profiles = {}
+    if not works_dir.is_dir():
+        return profiles
+    for path in sorted(works_dir.glob("*.md")):
+        if path.name.startswith("_"):
+            continue
+        fields, _sections = parse_item(path)
+        if fields.get("Type") != "work":
+            continue
+        title = fields.get("Название", "").strip()
+        if not title:
+            continue
+        profiles[title] = {
+            "author": fields.get("Автор", "").strip(),
+            "genre": fields.get("Жанр", "").strip(),
+            "description": fields.get("Описание", "").strip(),
+            "libretto": fields.get("Либретто", "").strip(),
+        }
+    return profiles
+
+
 def page(root: str, title: str, active: str, body: str) -> str:
     nav_parts = []
     for href, label in NAV:
@@ -338,6 +362,7 @@ def render_impressions(text: str) -> str:
 def build(items_dir: Path, out_dir: Path) -> int:
     perfs = load_performances(items_dir)
     profiles = load_people_profiles(items_dir.parent / "people")
+    work_profiles = load_work_profiles(items_dir.parent / "works")
 
     people = defaultdict(list)   # имя -> [(роль, perf)]
     works = defaultdict(list)    # название -> [perf]
@@ -413,6 +438,8 @@ def build(items_dir: Path, out_dir: Path) -> int:
         body = [f"<h1>{esc(p.title)}</h1>",
                 f'<p class="meta">{esc(p.venue_label)}{" · " + esc(p.date) if p.date else ""}</p>',
                 f"<dl>{dl}</dl>"]
+        if p.description:
+            body.append(f"<p>{esc(p.description)}</p>")
         if p.program:
             rows = "".join(
                 f"<li>{person_ref(root, author, people, profiles)} — "
@@ -503,7 +530,14 @@ def build(items_dir: Path, out_dir: Path) -> int:
         if authors:
             meta = ('<p class="meta">Автор: '
                     + ", ".join(link_person(root, a, perf_count(people.get(a, [])), profiles) for a in authors) + "</p>")
-        body = f"<h1>{esc(title)}</h1>{meta}" + perf_table(root, ps)
+        profile = work_profiles.get(title)
+        details = ""
+        if profile and (profile.get("description") or profile.get("libretto")):
+            desc = f'<p>{esc(profile["description"])}</p>' if profile.get("description") else ""
+            libretto = (f'<h2>Либретто</h2>{render_impressions(profile["libretto"])}'
+                        if profile.get("libretto") else "")
+            details = f"{desc}{libretto}"
+        body = f"<h1>{esc(title)}</h1>{meta}{details}" + perf_table(root, ps)
         (out_dir / "proizvedeniya" / f"{slugify(title)}.html").write_text(
             page(root, title, "proizvedeniya/index.html", body), encoding="utf-8")
 
@@ -547,6 +581,10 @@ def build(items_dir: Path, out_dir: Path) -> int:
             name: [{"role": role, "title": p.title, "date": p.date, "slug": p.slug}
                    for role, p in entries]
             for name, entries in sorted(people.items())
+        },
+        "works": {
+            title: {"documented": title in work_profiles}
+            for title in sorted(works)
         },
     }
     (out_dir / "data" / "index.json").write_text(

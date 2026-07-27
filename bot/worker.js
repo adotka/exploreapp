@@ -5,8 +5,12 @@
  * свободный текст или геолокацию. Разбирает через Claude API (structured
  * outputs), показывает предпросмотр + «вы уже встречали …», и по кнопке
  * подтверждения коммитит в GitHub: items/<...>.md + строку в
- * inventory/performances.md (+ скан в playbills/). Push в main автоматически
- * пересобирает сайт (GitHub Actions → Pages).
+ * inventory/performances.md (+ скан в playbills/). Для произведений, ещё не
+ * описанных в works/ (по данным опубликованного data/index.json), заодно
+ * составляет короткое описание (+ либретто/пересказ сюжета, где есть сюжет) и
+ * показывает его в предпросмотре — коммитится только вместе с остальным, по
+ * той же кнопке подтверждения (см. worksOf/draftWorkNotes/renderWork). Push в
+ * main автоматически пересобирает сайт (GitHub Actions → Pages).
  *
  * Secrets (wrangler secret put): TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
  *   ANTHROPIC_API_KEY, GITHUB_TOKEN (fine-grained PAT, contents RW на репо).
@@ -118,7 +122,7 @@ const PERF_SCHEMA = {
 
 const PARSE_PROMPT = `Это программка/афиша театрального спектакля (или её текст). Извлеки данные ДОСЛОВНО, как напечатано, на языке оригинала (обычно русский). Правила:
 - Имена людей — полной формой, как напечатано («Виктория Терешкина», не «В. Терешкина»).
-- title: название произведения; genre: жанр (опера/балет/драма/концерт…); author: автор исходного произведения (композитор/драматург), одно имя.
+- title: название произведения; genre: жанр (опера/балет/драма/концерт…); author: автор исходного произведения (композитор/драматург), одно имя, ИМЕНИТЕЛЬНЫЙ падеж (кто, а не кого) — даже если на странице он упомянут в другом падеже (например, «по операм Вагнера» → «Рихард Вагнер»); то же для program[].author. Падеж важен: сайт связывает повторные встречи с одним и тем же автором по точному совпадению строки.
 - program: ТОЛЬКО для сборных концертов из нескольких самостоятельных произведений разных
   авторов — по одной записи {author, title} на произведение, в порядке программы. Если
   исполняется одно произведение целиком (опера/балет) — program: [] (пустой массив), эта
@@ -132,6 +136,97 @@ const PARSE_PROMPT = `Это программка/афиша театральн�
   коллектива («Оркестр», «Хор», «Ансамбль» и т.п.) и названием коллектива как единственным
   именем — даже если коллектив описан общим текстом/врезкой, а не в табличном списке партий.
 - Неизвестные поля — пустая строка "" или пустой массив. Ничего не выдумывай.`;
+
+const WORK_NOTES_SCHEMA = {
+  type: "object", additionalProperties: false,
+  required: ["works"],
+  properties: {
+    works: {
+      type: "array",
+      items: {
+        type: "object", additionalProperties: false,
+        required: ["title", "description", "libretto"],
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          libretto: { type: "string" },
+        },
+      },
+    },
+  },
+};
+
+const WORK_NOTES_PROMPT = `Для каждого произведения из списка ниже (в формате «автор — название»,
+пронумерованы) дай:
+- description: 2–4 предложения — что это за произведение, в каком стиле/контексте (для
+  широкой аудитории, не музыковедческий разбор).
+- libretto: краткий пересказ сюжета по актам (несколько предложений), ТОЛЬКО если у
+  произведения есть сюжет/либретто (опера, балет, драма). Для произведений без сюжета
+  (симфония, инструментальный концерт, увертюра без программы, сюита и т.п.) — пустая строка "".
+Используй только общеизвестные, надёжно установленные факты. Если ты не уверен, что это за
+произведение (незнакомое/редкое название, неоднозначная атрибуция) — верни пустые строки для
+обоих полей, НИЧЕГО не выдумывай.
+Верни ровно столько объектов, сколько произведений в списке, В ТОМ ЖЕ порядке; поле title —
+скопируй название точно как дано (нужно для сверки).
+
+Список произведений:
+`;
+
+/** Произведения из разобранной программки: сборный концерт → каждый номер программы;
+ *  цельный спектакль (опера/балет) → единственная запись из title/author. */
+export function worksOf(p) {
+  const list = (p.program || [])
+    .filter((w) => w.title && w.title.trim())
+    .map((w) => ({ author: (w.author || "").trim(), title: w.title.trim() }));
+  if (list.length) return list;
+  if (p.title && p.title.trim()) return [{ author: (p.author || "").trim(), title: p.title.trim() }];
+  return [];
+}
+
+/** Произведения из pendingWorks, для которых в опубликованном индексе ещё нет works/<slug>.md. */
+export function undocumentedWorks(index, works) {
+  const documented = (index && index.works) || {};
+  const seen = new Set();
+  return works.filter((w) => {
+    if (seen.has(w.title)) return false;
+    seen.add(w.title);
+    return !documented[w.title]?.documented;
+  });
+}
+
+async function draftWorkNotes(env, works) {
+  if (!works.length) return [];
+  const listText = works.map((w, i) => `${i + 1}. ${w.author ? `${w.author} — ` : ""}${w.title}`).join("\n");
+  const result = await claude(env, [
+    { type: "text", text: WORK_NOTES_PROMPT + listText },
+  ], WORK_NOTES_SCHEMA, 4096);
+  const notes = result.works || [];
+  return works.map((w, i) => ({ ...w, description: notes[i]?.description || "", libretto: notes[i]?.libretto || "" }));
+}
+
+export function renderWork(w) {
+  const f = [];
+  const add = (k, v) => { if (v && String(v).trim()) f.push(`- **${k}:** ${String(v).trim()}`); };
+  add("Название", w.title);
+  add("Автор", w.author);
+  add("Жанр", w.genre);
+  add("Описание", w.description);
+  add("Либретто", w.libretto);
+  const today = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
+  return `# ${w.title}
+
+**Type:** work
+**Status:** active
+
+## Facts
+
+${f.join("\n")}
+
+## History
+
+- ${today} — добавлено телеграм-ботом (bot/worker.js) при разборе программки, подтверждено оператором
+`;
+}
 
 async function claude(env, blocks, schema, maxTokens = 8192) {
   const model = env.MODEL || "claude-opus-4-8";
@@ -607,7 +702,7 @@ function stripHtml(html) {
 
 // ------------------------------------------------------------- основной поток
 
-function preview(p, known) {
+function preview(p, known, workNotes) {
   const lines = [
     `🎭 <b>${p.title}</b>${p.genre ? ` (${p.genre})` : ""}`,
     !p.program?.length && p.author ? `Автор: ${p.author}` : "",
@@ -619,6 +714,13 @@ function preview(p, known) {
   if (known.length) {
     lines.push("", "👀 <b>Вы уже встречали:</b>", ...known);
   }
+  const withNotes = (workNotes || []).filter((w) => w.description);
+  if (withNotes.length) {
+    lines.push("", "🎼 <b>Новые произведения (описание составлено ботом):</b>");
+    for (const w of withNotes) {
+      lines.push(`• <i>${w.title}</i> — ${w.description}${w.libretto ? " (+ либретто)" : ""}`);
+    }
+  }
   return lines.join("\n");
 }
 
@@ -628,16 +730,19 @@ async function proposeIngest(env, chatId, parsed, sourceUrl, photos) {
     return;
   }
   let known = [];
+  let workNotes = [];
   try {
     const index = await (await fetch(`${env.SITE_URL}/data/index.json`, { cf: { cacheTtl: 60 } })).json();
     known = knownPeopleLines(index, peopleOf(parsed));
-  } catch (e) { /* индекс ещё не опубликован — не критично */ }
+    const undocumented = undocumentedWorks(index, worksOf(parsed));
+    if (undocumented.length) workNotes = await draftWorkNotes(env, undocumented);
+  } catch (e) { /* индекс ещё не опубликован, или черновик описаний не удался — не критично */ }
 
   const key = crypto.randomUUID();
-  await env.PENDING.put(key, JSON.stringify({ parsed, sourceUrl, photos: photos || [] }), { expirationTtl: 86400 });
+  await env.PENDING.put(key, JSON.stringify({ parsed, sourceUrl, photos: photos || [], workNotes }), { expirationTtl: 86400 });
   await tg(env, "sendMessage", {
     chat_id: chatId,
-    text: preview(parsed, known) + "\n\nДобавить в архив?",
+    text: preview(parsed, known, workNotes) + "\n\nДобавить в архив?",
     parse_mode: "HTML",
     reply_markup: {
       inline_keyboard: [[
@@ -655,7 +760,7 @@ async function confirmIngest(env, cb) {
     await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Устарело — пришлите ещё раз" });
     return;
   }
-  const { parsed: p, sourceUrl, photos } = JSON.parse(raw);
+  const { parsed: p, sourceUrl, photos, workNotes } = JSON.parse(raw);
   const fileName = `${p.date}_${theatreSlug(p.theatre)}_${slugify(p.title)}.md`;
   const files = [];
   const playbillPaths = [];
@@ -668,8 +773,14 @@ async function confirmIngest(env, cb) {
   files.push({ path: `items/${fileName}`, content: renderItem(p, sourceUrl, playbillPaths.join(", ")) });
   const inv = await getRawFile(env, "inventory/performances.md");
   files.push({ path: "inventory/performances.md", content: insertInventoryRow(inv, p, fileName) });
+  const newWorks = (workNotes || []).filter((w) => w.description);
+  for (const w of newWorks) {
+    const genre = w.title === p.title && !p.program?.length ? p.genre : "";
+    files.push({ path: `works/${slugify(w.title)}.md`, content: renderWork({ ...w, genre }) });
+  }
   const confirmedBy = cb.from.username ? `@${cb.from.username}` : cb.from.first_name || String(cb.from.id);
-  await commitFiles(env, files, `bot: ingest ${p.title} (${p.date})\n\nПодтверждено в Telegram: ${confirmedBy}.`);
+  const worksNote = newWorks.length ? `\n\nНовые произведения: ${newWorks.map((w) => w.title).join(", ")}.` : "";
+  await commitFiles(env, files, `bot: ingest ${p.title} (${p.date})\n\nПодтверждено в Telegram: ${confirmedBy}.${worksNote}`);
   await env.PENDING.delete(key);
   await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Добавлено ✅" });
 
@@ -689,7 +800,7 @@ async function confirmIngest(env, cb) {
 
   await tg(env, "editMessageText", {
     chat_id: cb.message.chat.id, message_id: cb.message.message_id,
-    text: preview(p, known) + `\n\n✅ Добавлено в архив. Сайт пересоберётся через ~1 мин: ${env.SITE_URL}/` + recurringNote,
+    text: preview(p, known, workNotes) + `\n\n✅ Добавлено в архив. Сайт пересоберётся через ~1 мин: ${env.SITE_URL}/` + recurringNote,
     parse_mode: "HTML",
   });
 }
