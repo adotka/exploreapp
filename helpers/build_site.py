@@ -282,9 +282,16 @@ def link_person(root, name, count=None, profiles=None):
     return f'<a href="{root}lyudi/{slugify(name)}.html"{cls}>{esc(name)}{tip}</a>'
 
 
+def perf_count(entries):
+    """Число РАЗНЫХ спектаклей, а не число ролей — один человек с двумя ролями в одном
+    спектакле (напр. «режиссёр-постановщик, художник по костюмам») — это одна встреча,
+    не две."""
+    return len({p.slug for _role, p in entries})
+
+
 def person_ref(root, name, people, profiles=None):
     """Ссылка на человека + бейдж числа встреч, если их больше одной (списки на странице спектакля)."""
-    count = len(people.get(name, []))
+    count = perf_count(people.get(name, []))
     link = link_person(root, name, count, profiles)
     return f'{link} <span class="count">×{count}</span>' if count > 1 else link
 
@@ -380,7 +387,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
             facts.append(("Жанр", esc(p.genre)))
         if p.author and not p.program:
             author_name = clean_name(p.author)
-            facts.append(("Автор", link_person(root, author_name, len(people.get(author_name, [])), profiles)))
+            facts.append(("Автор", link_person(root, author_name, perf_count(people.get(author_name, [])), profiles)))
         if p.theatre:
             venue = link_theatre(root, p.theatre)
             if p.scene:
@@ -431,8 +438,8 @@ def build(items_dir: Path, out_dir: Path) -> int:
     root = "../"
     if people:
         rows = "".join(
-            f'<li data-count="{len(entries)}">{link_person(root, name, len(entries), profiles)} '
-            f'<span class="meta">({len(entries)})</span></li>'
+            f'<li data-count="{perf_count(entries)}">{link_person(root, name, perf_count(entries), profiles)} '
+            f'<span class="meta">({perf_count(entries)})</span></li>'
             for name, entries in sorted(people.items()))
         filter_ui = (
             '<p class="filter-row"><label>'
@@ -495,7 +502,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
         meta = ""
         if authors:
             meta = ('<p class="meta">Автор: '
-                    + ", ".join(link_person(root, a, len(people.get(a, [])), profiles) for a in authors) + "</p>")
+                    + ", ".join(link_person(root, a, perf_count(people.get(a, [])), profiles) for a in authors) + "</p>")
         body = f"<h1>{esc(title)}</h1>{meta}" + perf_table(root, ps)
         (out_dir / "proizvedeniya" / f"{slugify(title)}.html").write_text(
             page(root, title, "proizvedeniya/index.html", body), encoding="utf-8")

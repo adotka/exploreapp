@@ -82,5 +82,32 @@ already-confirmed data into views.)
 
 ---
 
+## P-trust-fresh-source-over-hint
+
+**Rule:** When a research/verification pass returns a finding that conflicts with a hint or
+assumption supplied to it (voice type, credited role, identity), treat the fresh primary-source
+finding as authoritative and re-verify directly against the project's own source data (e.g.
+grep `items/*.md`) before writing anything — never silently pick a side or downgrade confidence
+without resolving the conflict against a primary source.
+
+**Why:** Across the recurring-people enrichment batches, hints supplied to research agents
+(often carried over from an earlier verification pass, or across a context-compaction
+boundary) turned out wrong more than once — a voice type, and in one batch six people's actual
+professions/roles entirely. Each time, the research agent's fresh finding against a live
+official source was correct and the stale hint was not. Guessing which one to trust, or
+splitting the difference, risks writing a fabricated or mismatched fact into a source-of-truth
+file.
+
+**How to apply:** On any hint/finding conflict, re-run the grep against `items/*.md` (or the
+equivalent primary source) before writing the profile — don't resolve it from memory or by
+picking whichever seems more plausible. If the primary source itself is ambiguous, flag and
+skip per the existing "never fabricate facts" convention rather than force a resolution.
+
+**Known exceptions:** none.
+
+*(Ratified 2026-07-27 by the operator, during the third recurring-people enrichment batch.)*
+
+---
+
 *Amend deliberately: change a principle here (with rationale + date) rather than carving silent
 exceptions. Add new principles with a descriptive `P-<slug>` ID (ad-hoc order — no numbering).*
