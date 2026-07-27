@@ -52,6 +52,10 @@ header .wrap { display: flex; flex-wrap: wrap; align-items: baseline;
 nav { display: flex; flex-wrap: wrap; gap: 1rem; }
 nav a { color: var(--muted); text-decoration: none; }
 nav a:hover, nav a.here { color: var(--accent); }
+.date-fmt-btn { margin-left: auto; background: none; border: 1px solid var(--line);
+                border-radius: 0.3rem; color: var(--muted); font: inherit; font-size: 0.8rem;
+                padding: 0.15rem 0.5rem; cursor: pointer; }
+.date-fmt-btn:hover { color: var(--accent); border-color: var(--accent); }
 main { padding: 1.5rem 0 3rem; }
 h1 { font-size: 1.7rem; line-height: 1.25; margin: 0.5rem 0 0.25rem; }
 h2 { font-size: 1.15rem; margin-top: 1.75rem; border-bottom: 1px solid var(--line);
@@ -113,6 +117,14 @@ def slugify(text: str) -> str:
 
 def esc(text: str) -> str:
     return html.escape(text, quote=True)
+
+
+def date_span(d: str) -> str:
+    """Дата в каноническом ГГГГ-ММ-ДД с data-iso для клиентского переключения формата
+    (ГГГГ-ММ-ДД / ГГГГ-ДД-ММ) — см. #date-fmt-toggle и его скрипт в page()."""
+    if not d:
+        return ""
+    return f'<span data-iso="{esc(d)}">{esc(d)}</span>'
 
 
 class Performance:
@@ -308,10 +320,37 @@ def page(root: str, title: str, active: str, body: str) -> str:
   <a class="brand" href="{root}index.html">Йорик</a>
   <span class="tagline">Я знал его…</span>
   <nav>{nav}</nav>
+  <button type="button" id="date-fmt-toggle" class="date-fmt-btn"
+          title="Переключить формат дат (сохраняется в этом браузере)">ГГГГ-ММ-ДД</button>
 </div></header>
 <main><div class="wrap">
 {body}
 </div></main>
+<script>
+(function () {{
+  var KEY = "dateFormat";
+  var LABELS = {{ ymd: "ГГГГ-ММ-ДД", ydm: "ГГГГ-ДД-ММ" }};
+  function mode() {{ return localStorage.getItem(KEY) === "ydm" ? "ydm" : "ymd"; }}
+  function apply() {{
+    var m = mode();
+    document.querySelectorAll("[data-iso]").forEach(function (el) {{
+      var iso = el.dataset.iso;
+      var parts = /^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})$/.exec(iso);
+      el.textContent = parts ? (m === "ydm" ? parts[1] + "-" + parts[3] + "-" + parts[2] : iso) : iso;
+    }});
+    var btn = document.getElementById("date-fmt-toggle");
+    if (btn) btn.textContent = LABELS[m];
+  }}
+  var btn = document.getElementById("date-fmt-toggle");
+  if (btn) {{
+    btn.addEventListener("click", function () {{
+      localStorage.setItem(KEY, mode() === "ymd" ? "ydm" : "ymd");
+      apply();
+    }});
+  }}
+  apply();
+}})();
+</script>
 </body>
 </html>
 """
@@ -360,7 +399,7 @@ def link_theatre(root, theatre):
 
 
 def perf_row(root, p, show_venue=True):
-    cells = f"<td>{esc(p.date)}</td><td>{link_perf(root, p)}</td><td>{esc(p.genre)}</td>"
+    cells = f"<td>{date_span(p.date)}</td><td>{link_perf(root, p)}</td><td>{esc(p.genre)}</td>"
     if show_venue:
         venue = ""
         if p.theatre:
@@ -446,7 +485,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
                 venue += f" · {esc(p.scene)}"
             facts.append(("Театр / Сцена", venue))
         if p.date:
-            facts.append(("Дата", esc(p.date)))
+            facts.append(("Дата", date_span(p.date)))
         if p.playbill:
             paths = [x.strip() for x in p.playbill.split(",") if x.strip()]
             links = []
@@ -463,7 +502,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
             facts.append(("Статус", "в архиве (retired)"))
         dl = "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in facts)
         body = [f"<h1>{esc(p.title)}</h1>",
-                f'<p class="meta">{esc(p.venue_label)}{" · " + esc(p.date) if p.date else ""}</p>',
+                f'<p class="meta">{esc(p.venue_label)}{" · " + date_span(p.date) if p.date else ""}</p>',
                 f"<dl>{dl}</dl>"]
         if p.description:
             body.append(f"<p>{esc(p.description)}</p>")
@@ -522,7 +561,7 @@ def build(items_dir: Path, out_dir: Path) -> int:
     for name, entries in people.items():
         items = "".join(
             f"<li>{esc(role)} — {link_perf(root, p)} "
-            f"<span class=\"meta\">({esc(p.date)}, {esc(p.venue_label)})</span></li>"
+            f"<span class=\"meta\">({date_span(p.date)}, {esc(p.venue_label)})</span></li>"
             for role, p in sorted(entries, key=lambda e: e[1].date, reverse=True))
         profile = profiles.get(name)
         header = ""

@@ -137,5 +137,28 @@ history) arises, apply the same resolution rather than re-deriving it.
 
 ---
 
+## P-viewer-prefs-are-client-side
+
+**Rule:** A setting that changes only how existing facts are *displayed* to a particular viewer
+(date format, filters, theme, language) is stored client-side (e.g. `localStorage`), scoped to
+that browser — never written to the repo, never a build-time option, never data.
+
+**Why:** This session added a date-format toggle (ГГГГ-ММ-ДД / ГГГГ-ДД-ММ). The underlying fact
+(the date) is unchanged — only its presentation varies per viewer. Committing a chosen format to
+the repo would conflate a viewing preference with the archive's actual facts, and would make the
+canonical format ambiguous for other automated readers (e.g. the bot, which needs `YYYY-MM-DD`
+unambiguously).
+
+**How to apply:** When a display-only preference is proposed, render the canonical value once (in
+the format the rest of the codebase already relies on — e.g. `data-iso="YYYY-MM-DD"`) and let
+client-side JS reformat it for display from a `localStorage` setting. Never let a display
+preference alter what's written to `items/*.md`, `data/index.json`, or any other durable file.
+
+**Known exceptions:** none yet.
+
+*(Ratified 2026-07-27 by the operator, during the date-format-toggle session.)*
+
+---
+
 *Amend deliberately: change a principle here (with rationale + date) rather than carving silent
 exceptions. Add new principles with a descriptive `P-<slug>` ID (ad-hoc order — no numbering).*
