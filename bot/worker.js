@@ -131,7 +131,16 @@ const PARSE_PROMPT = `Это программка/афиша театральн�
   исполняется одно произведение целиком (опера/балет) — program: [] (пустой массив), эта
   информация уже в title/author. Когда program непустой, title — название концерта/события
   (как напечатано), а author можно оставить "".
-- theatre/scene: театр и подсцена. Для Мариинского theatre всегда «Мариинский театр», scene — одно из: «Историческая сцена», «Мариинский-2», «Концертный зал». Подсказка: в URL афиши mariinsky.ru код сцены перед временем: 1 = Историческая сцена, 2 = Мариинский-2, 3 = Концертный зал. Для Зарядья theatre всегда «Концертный зал "Зарядье"» (даже если в программке напечатано разговорное «Зал Зарядье» — это то же самое место), scene — одно из: «Большой зал», «Малый зал».
+- theatre/scene: театр и подсцена — площадка, ГДЕ проходит показ (адрес/логотип зала на
+  программке), а НЕ название коллектива-исполнителя. Гастролирующий коллектив часто называется
+  по своему домашнему театру (например, «Симфонический оркестр Мариинского театра») и играет в
+  другом зале — не путай название оркестра/хора/ансамбля в title или cast с theatre; theatre
+  определяется только фактическим местом показа. Для Мариинского theatre всегда «Мариинский
+  театр», scene — одно из: «Историческая сцена», «Мариинский-2», «Концертный зал». Подсказка: в
+  URL афиши mariinsky.ru код сцены перед временем: 1 = Историческая сцена, 2 = Мариинский-2,
+  3 = Концертный зал. Для Зарядья theatre всегда «Концертный зал "Зарядье"» (даже если в
+  программке напечатано разговорное «Зал Зарядье» — это то же самое место), scene — одно из:
+  «Большой зал», «Малый зал».
 - date: ГГГГ-ММ-ДД; time: ЧЧ:ММ; premiere: даты премьеры постановки как в тексте.
 - staff: постановочная группа (дирижёр, режиссёр, хореограф, художники, хормейстеры…); cast: исполнители с партиями/ролями.
 - Если в программке отдельным блоком назван коллектив-исполнитель (оркестр, хор, ансамбль —
@@ -195,6 +204,25 @@ export function undocumentedWorks(index, works) {
     seen.add(w.title);
     return !documented[w.title]?.documented;
   });
+}
+
+/** Программки печатают одно и то же произведение то в кавычках, то без («Болеро» /
+ *  Болеро) — по точному совпадению строки это два разных title и, что хуже, оба
+ *  slugify() в один и тот же файл works/<slug>.md, так что новый черновик молча
+ *  затирает уже задокументированный профиль. Приводим title к уже известной
+ *  задокументированной форме (сверка без кавычек/регистра/ё), если она есть в индексе,
+ *  ДО проверки undocumentedWorks — мутирует parsed на месте, тем же title спектакль и
+ *  запишется в items/. */
+function canonicalizeWorkTitles(index, parsed) {
+  const documented = (index && index.works) || {};
+  const canonical = new Map();
+  for (const title of Object.keys(documented)) canonical.set(normalizeTitle(title), title);
+  const resolve = (title) => canonical.get(normalizeTitle(title)) || title;
+  if (parsed.program?.length) {
+    for (const w of parsed.program) w.title = resolve(w.title);
+  } else if (parsed.title) {
+    parsed.title = resolve(parsed.title);
+  }
 }
 
 async function draftWorkNotes(env, works) {
@@ -850,6 +878,7 @@ async function proposeIngest(env, chatId, parsed, sourceUrl, photos) {
   let participantNotes = [];
   try {
     const index = await (await fetch(`${env.SITE_URL}/data/index.json`, { cf: { cacheTtl: 60 } })).json();
+    canonicalizeWorkTitles(index, parsed);
     known = knownPeopleLines(index, peopleOf(parsed));
     const undocumented = undocumentedWorks(index, worksOf(parsed));
     if (undocumented.length) workNotes = await draftWorkNotes(env, undocumented);
