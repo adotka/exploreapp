@@ -1284,12 +1284,21 @@ async function handlePhoto(env, chatId, message) {
 
 /**
  * Несколько фото, отправленных одним альбомом (media_group_id), приходят как отдельные
- * webhook-обновления — каждое в своём вызове Worker'а. Копим страницы в KV; каждый вызов
- * ждёт короткую паузу и затем проверяет, не пришла ли за это время следующая страница —
- * если нет, он последний и разбирает альбом целиком; если да, молча выходит (разбором
- * займётся тот вызов, что окажется последним).
+ * webhook-обновления — каждое в своём вызове Worker'а. Копим страницы в KV; каждая страница
+ * откладывает (ctx.waitUntil) короткую паузу и проверку, не пришла ли за это время следующая
+ * страница — если нет, она последняя и разбирает альбом целиком; если да, молча выходит
+ * (разбором займётся тот вызов, что окажется последним).
+ *
+ * КРИТИЧНО: сама функция-обработчик (handlePhotoGroup) должна вернуться быстро, НЕ дожидаясь
+ * двухсекундной паузы — Telegram не присылает следующую страницу альбома, пока не получит
+ * ответ на webhook текущей (см. fetch() ниже, который теперь дожидается handleUpdate целиком —
+ * это исправило тихие обрывы при разборе одиночного фото, но если бы двухсекундная пауза тоже
+ * была внутри await-цепочки, каждая страница блокировала бы доставку следующей на те же 2с и
+ * ни одна не увидела бы соседей в KV к моменту проверки. Поэтому пауза+разбор вынесены в
+ * ctx.waitUntil(finishPhotoGroup(...)) — не блокирует ответ, страницы прилетают быстро одна за
+ * другой, как раньше.
  */
-async function handlePhotoGroup(env, chatId, message) {
+async function handlePhotoGroup(env, ctx, chatId, message) {
   // Каждая страница пишется в СВОЙ ключ (по message_id, уникален и монотонен в пределах
   // альбома) — не в общий JSON-блоб. KV не даёт атомарного read-modify-write: если бы все
   // страницы читали-дополняли-писали один и тот же список, две почти одновременные
@@ -1301,12 +1310,15 @@ async function handlePhotoGroup(env, chatId, message) {
   const sizes = message.photo;
   const fileId = sizes[sizes.length - 1].file_id;
   await env.PENDING.put(`${prefix}${myId}`, JSON.stringify({ fileId, caption: message.caption || "" }), { expirationTtl: 60 });
+  ctx.waitUntil(finishPhotoGroup(env, chatId, prefix, myId));
+}
 
+async function finishPhotoGroup(env, chatId, prefix, myId) {
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
   const listing = await env.PENDING.list({ prefix });
   const ids = listing.keys.map((k) => parseInt(k.name.slice(prefix.length), 10));
-  if (myId !== Math.max(...ids)) return; // не самая поздняя страница — обработает она сама
+  if (!ids.length || myId !== Math.max(...ids)) return; // не самая поздняя страница — обработает она сама
 
   ids.sort((a, b) => a - b);
   const items = [];
@@ -1316,17 +1328,26 @@ async function handlePhotoGroup(env, chatId, message) {
   }
   await Promise.all(ids.map((id) => env.PENDING.delete(`${prefix}${id}`)));
 
-  await tg(env, "sendMessage", { chat_id: chatId, text: `📄 Получил ${items.length} стр. программки, разбираю…` });
+  // Дальше — тяжёлый разбор (claude() с несколькими изображениями, потенциально дольше
+  // одностраничного) уже неизбежно идёт в фоне под waitUntil, а не под await, как для
+  // остальных типов сообщений (см. fetch()) — иначе некому было бы дождаться двухсекундной
+  // паузы выше без блокировки доставки соседних страниц. Свой try/catch здесь обязателен:
+  // это выполняется вне try/catch в handleUpdate, и без него ошибка молча пропадёт.
+  try {
+    await tg(env, "sendMessage", { chat_id: chatId, text: `📄 Получил ${items.length} стр. программки, разбираю…` });
 
-  const blocks = [];
-  for (const item of items) {
-    const { buffer } = await tgFile(env, item.fileId);
-    blocks.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64encode(buffer) } });
+    const blocks = [];
+    for (const item of items) {
+      const { buffer } = await tgFile(env, item.fileId);
+      blocks.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64encode(buffer) } });
+    }
+    const caption = items.map((i) => i.caption).filter(Boolean).join("\n");
+    const context = caption ? `\nПодпись от зрителя: ${caption}` : "";
+    const parsed = await claude(env, [...blocks, { type: "text", text: PARSE_PROMPT + context }], PERF_SCHEMA);
+    await proposeIngest(env, chatId, parsed, "", blocks.map((b) => b.source.data));
+  } catch (e) {
+    await tg(env, "sendMessage", { chat_id: chatId, text: `⚠️ Ошибка: ${String(e).slice(0, 300)}` });
   }
-  const caption = items.map((i) => i.caption).filter(Boolean).join("\n");
-  const context = caption ? `\nПодпись от зрителя: ${caption}` : "";
-  const parsed = await claude(env, [...blocks, { type: "text", text: PARSE_PROMPT + context }], PERF_SCHEMA);
-  await proposeIngest(env, chatId, parsed, "", blocks.map((b) => b.source.data));
 }
 
 async function handleDocument(env, chatId, message) {
@@ -1366,7 +1387,7 @@ function isAllowed(env, id) {
     .includes(String(id));
 }
 
-async function handleUpdate(env, update) {
+async function handleUpdate(env, ctx, update) {
   const cb = update.callback_query;
   if (cb) {
     if (!isAllowed(env, cb.from.id)) return;
@@ -1397,7 +1418,7 @@ async function handleUpdate(env, update) {
 
   try {
     if (message.location) await handleLocation(env, chatId, message.location);
-    else if (message.photo && message.media_group_id) await handlePhotoGroup(env, chatId, message);
+    else if (message.photo && message.media_group_id) await handlePhotoGroup(env, ctx, chatId, message);
     else if (message.photo) await handlePhoto(env, chatId, message);
     else if (message.document) await handleDocument(env, chatId, message);
     else if (message.text && /^\/(start|help)/.test(message.text)) {
@@ -1432,7 +1453,15 @@ export default {
       // и отрапортовать ошибку в чат вместо тишины. Компромисс: ответ Telegram'у на вебхук
       // теперь может занимать секунды/десятки секунд вместо мгновенного — в пределах
       // документированного таймаута самого Telegram на вебхуки это не проблема.
-      await handleUpdate(env, update);
+      //
+      // ИСКЛЮЧЕНИЕ — альбомы (media_group_id): Telegram не присылает следующую страницу,
+      // пока не получит ответ на webhook текущей, а разбору альбома нужна пауза в пару
+      // секунд, чтобы дождаться всех страниц (см. handlePhotoGroup/finishPhotoGroup) — если
+      // бы эта пауза тоже была здесь, под await, каждая страница блокировала бы доставку
+      // следующей и ни одна не увидела бы соседей. Поэтому handlePhotoGroup сама выносит
+      // паузу+тяжёлый разбор в ctx.waitUntil и возвращается быстро — общий await здесь
+      // касается только этого быстрого возврата.
+      await handleUpdate(env, ctx, update);
       return new Response("ok");
     }
     return new Response("Йорик bot OK");
