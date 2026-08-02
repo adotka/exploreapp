@@ -259,24 +259,40 @@ ${f.join("\n")}
 `;
 }
 
+/** Без явного таймаута fetch() к Anthropic может провисеть дольше лимита времени
+ *  выполнения Worker'а — платформа тогда молча убивает инстанс ДО того, как успеет
+ *  сработать catch в handleUpdate, и оператор не получает вообще никакого ответа
+ *  (см. sessions/2026-08-02_bot-photo-timeout.md). AbortController здесь превращает
+ *  зависание в обычную catchable-ошибку с понятным текстом. */
 async function claude(env, blocks, schema, maxTokens = 8192) {
   const model = env.MODEL || "claude-opus-4-8";
   const outputConfig = { format: { type: "json_schema", schema } };
   if (!/^claude-haiku-/.test(model)) outputConfig.effort = "medium";
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      output_config: outputConfig,
-      messages: [{ role: "user", content: blocks }],
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  let resp;
+  try {
+    resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        output_config: outputConfig,
+        messages: [{ role: "user", content: blocks }],
+      }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("Claude API не ответил за 45с (таймаут) — попробуйте ещё раз или пришлите скан попроще");
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!resp.ok) throw new Error(`Claude API ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
   const msg = await resp.json();
   if (msg.stop_reason === "refusal") throw new Error("Claude отклонил запрос (refusal)");
