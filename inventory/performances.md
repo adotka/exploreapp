@@ -29,6 +29,7 @@
 | 2023-01-22 | Пеллеас и Мелизанда | Мариинский театр / Концертный зал | [items/2023-01-22_mariinsky_pelleas-i-melizanda.md](../items/2023-01-22_mariinsky_pelleas-i-melizanda.md) |
 | 2023-01-21 | Отелло | Мариинский театр / Мариинский-2 | [items/2023-01-21_mariinsky_otello.md](../items/2023-01-21_mariinsky_otello.md) |
 | 2022-09-10 | Царская невеста | Мариинский театр / Мариинский-2 | [items/2022-09-10_mariinsky_tsarskaya-nevesta.md](../items/2022-09-10_mariinsky_tsarskaya-nevesta.md) |
+| 2022-06-07 | Лада Лабзина | Концертный зал "Зарядье" / Большой зал | [items/2022-06-07_zaryadye_lada-labzina.md](../items/2022-06-07_zaryadye_lada-labzina.md) |
 | 2022-04-08 | На струнах арфы через пространства и века | Мариинский театр / Концертный зал | [items/2022-04-08_mariinsky_na-strunah-arfy-cherez-prostranstva-i-veka.md](../items/2022-04-08_mariinsky_na-strunah-arfy-cherez-prostranstva-i-veka.md) |
 | 2022-04-07 | Сказка о царе Салтане | Мариинский театр / Историческая сцена | [items/2022-04-07_mariinsky_skazka-o-tsare-saltane.md](../items/2022-04-07_mariinsky_skazka-o-tsare-saltane.md) |
 | 2022-04-06 | Троянцы | Мариинский театр / Мариинский-2 | [items/2022-04-06_mariinsky_troyantsy.md](../items/2022-04-06_mariinsky_troyantsy.md) |
