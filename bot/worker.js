@@ -1150,6 +1150,7 @@ async function handleFreeText(env, chatId, text) {
 async function handlePhoto(env, chatId, message) {
   const sizes = message.photo;
   const fileId = sizes[sizes.length - 1].file_id;
+  await tg(env, "sendMessage", { chat_id: chatId, text: "📷 Получил, разбираю…" });
   const { buffer } = await tgFile(env, fileId);
   const b64 = b64encode(buffer);
   const context = message.caption ? `\nПодпись от зрителя: ${message.caption}` : "";
