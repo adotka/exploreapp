@@ -1286,17 +1286,27 @@ async function handlePhoto(env, chatId, message) {
  * Несколько фото, отправленных одним альбомом (media_group_id), приходят как отдельные
  * webhook-обновления — каждое в своём вызове Worker'а. Копим страницы в KV; каждая страница
  * откладывает (ctx.waitUntil) короткую паузу и проверку, не пришла ли за это время следующая
- * страница — если нет, она последняя и разбирает альбом целиком; если да, молча выходит
- * (разбором займётся тот вызов, что окажется последним).
+ * страница — если нет, она последняя и собирает файлы альбома; если да, молча выходит
+ * (сбором займётся тот вызов, что окажется последним).
  *
  * КРИТИЧНО: сама функция-обработчик (handlePhotoGroup) должна вернуться быстро, НЕ дожидаясь
  * двухсекундной паузы — Telegram не присылает следующую страницу альбома, пока не получит
  * ответ на webhook текущей (см. fetch() ниже, который теперь дожидается handleUpdate целиком —
  * это исправило тихие обрывы при разборе одиночного фото, но если бы двухсекундная пауза тоже
  * была внутри await-цепочки, каждая страница блокировала бы доставку следующей на те же 2с и
- * ни одна не увидела бы соседей в KV к моменту проверки. Поэтому пауза+разбор вынесены в
+ * ни одна не увидела бы соседей в KV к моменту проверки. Поэтому пауза+сбор файлов вынесены в
  * ctx.waitUntil(finishPhotoGroup(...)) — не блокирует ответ, страницы прилетают быстро одна за
  * другой, как раньше.
+ *
+ * ТЯЖЁЛЫЙ разбор (claude() с несколькими изображениями) сюда намеренно НЕ входит: тройная
+ * страница программки однажды тихо зависла именно на этом шаге — тот же класс проблемы, что
+ * чинили для одиночного фото (см. sessions/2026-08-02_waituntil-fix.md), только здесь дожидаться
+ * его под await нельзя (блокировало бы доставку соседних страниц). Вместо разбора сразу —
+ * finishPhotoGroup только скачивает файлы (лёгкая быстрая сеть, не тяжёлая модель — риск того же
+ * фонового убийства намного ниже) и
+ * предлагает кнопку «Разобрать»: нажатие — обычный callback_query, который handleUpdate уже
+ * дожидается целиком с полным бюджетом времени, так что сам claude() и его таймаут выполняются
+ * там же надёжно, как и для одиночного фото (см. parsePhotoGroup ниже).
  */
 async function handlePhotoGroup(env, ctx, chatId, message) {
   // Каждая страница пишется в СВОЙ ключ (по message_id, уникален и монотонен в пределах
@@ -1328,26 +1338,48 @@ async function finishPhotoGroup(env, chatId, prefix, myId) {
   }
   await Promise.all(ids.map((id) => env.PENDING.delete(`${prefix}${id}`)));
 
-  // Дальше — тяжёлый разбор (claude() с несколькими изображениями, потенциально дольше
-  // одностраничного) уже неизбежно идёт в фоне под waitUntil, а не под await, как для
-  // остальных типов сообщений (см. fetch()) — иначе некому было бы дождаться двухсекундной
-  // паузы выше без блокировки доставки соседних страниц. Свой try/catch здесь обязателен:
-  // это выполняется вне try/catch в handleUpdate, и без него ошибка молча пропадёт.
+  // Своя try/catch обязательна: это выполняется вне try/catch в handleUpdate (запущено через
+  // ctx.waitUntil), и без неё ошибка молча пропадёт.
   try {
-    await tg(env, "sendMessage", { chat_id: chatId, text: `📄 Получил ${items.length} стр. программки, разбираю…` });
-
     const blocks = [];
     for (const item of items) {
       const { buffer } = await tgFile(env, item.fileId);
       blocks.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64encode(buffer) } });
     }
     const caption = items.map((i) => i.caption).filter(Boolean).join("\n");
-    const context = caption ? `\nПодпись от зрителя: ${caption}` : "";
-    const parsed = await claude(env, [...blocks, { type: "text", text: PARSE_PROMPT + context }], PERF_SCHEMA);
-    await proposeIngest(env, chatId, parsed, "", blocks.map((b) => b.source.data));
+    const key = crypto.randomUUID();
+    await env.PENDING.put(key, JSON.stringify({ blocks, caption }), { expirationTtl: 900 });
+    await tg(env, "sendMessage", {
+      chat_id: chatId,
+      text: `📄 Получил ${items.length} стр. программки. Разобрать?`,
+      reply_markup: { inline_keyboard: [[
+        { text: "🔍 Разобрать", callback_data: `g:${key}` },
+        { text: "❌ Отмена", callback_data: `x:${key}` },
+      ]] },
+    });
   } catch (e) {
     await tg(env, "sendMessage", { chat_id: chatId, text: `⚠️ Ошибка: ${String(e).slice(0, 300)}` });
   }
+}
+
+/** Нажатие «🔍 Разобрать» — callback_query, а не фоновая задача: handleUpdate дожидается его
+ *  целиком (полный бюджет времени, не урезанный waitUntil-грейс-период), так что тяжёлый
+ *  claude() и его таймаут (см. claude()) отрабатывают надёжно, как для одиночного фото. */
+async function parsePhotoGroup(env, cb) {
+  const key = cb.data.slice(2);
+  const raw = await env.PENDING.get(key);
+  if (!raw) {
+    await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Устарело — пришлите фото ещё раз" });
+    return;
+  }
+  await env.PENDING.delete(key);
+  const { blocks, caption } = JSON.parse(raw);
+  const chatId = cb.message.chat.id;
+  await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Разбираю…" });
+  await tg(env, "editMessageText", { chat_id: chatId, message_id: cb.message.message_id, text: "🔍 Разбираю…" });
+  const context = caption ? `\nПодпись от зрителя: ${caption}` : "";
+  const parsed = await claude(env, [...blocks, { type: "text", text: PARSE_PROMPT + context }], PERF_SCHEMA);
+  await proposeIngest(env, chatId, parsed, "", blocks.map((b) => b.source.data));
 }
 
 async function handleDocument(env, chatId, message) {
@@ -1394,6 +1426,7 @@ async function handleUpdate(env, ctx, update) {
     try {
       if (cb.data.startsWith("c:")) await confirmIngest(env, cb);
       else if (cb.data.startsWith("p:")) await confirmPick(env, cb);
+      else if (cb.data.startsWith("g:")) await parsePhotoGroup(env, cb);
       else if (cb.data.startsWith("x:")) {
         await env.PENDING.delete(cb.data.slice(2));
         await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Отменено" });
