@@ -1317,7 +1317,17 @@ export default {
         return new Response("forbidden", { status: 403 });
       }
       const update = await request.json();
-      ctx.waitUntil(handleUpdate(env, update));
+      // Раньше — ctx.waitUntil(handleUpdate(...)) с немедленным "ok": Cloudflare отводит
+      // фоновой (post-response) задаче в waitUntil более короткий и НЕ настраиваемый бюджет
+      // времени, чем обычному запросу; при его истечении рантайм молча убивает инстанс —
+      // ни один try/catch/finally внутри handleUpdate (включая таймаут в claude()) не
+      // успевает сработать, потому что убивают саму среду исполнения, а не бросают
+      // JS-исключение. Дожидаемся handleUpdate здесь — обычный (не фоновый) запрос получает
+      // полный бюджет CPU/времени, и claude()'ный таймаут в 45с реально успевает отработать
+      // и отрапортовать ошибку в чат вместо тишины. Компромисс: ответ Telegram'у на вебхук
+      // теперь может занимать секунды/десятки секунд вместо мгновенного — в пределах
+      // документированного таймаута самого Telegram на вебхуки это не проблема.
+      await handleUpdate(env, update);
       return new Response("ok");
     }
     return new Response("Йорик bot OK");
