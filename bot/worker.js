@@ -125,7 +125,7 @@ const PERF_SCHEMA = {
 
 const PARSE_PROMPT = `Это программка/афиша театрального спектакля (или её текст). Извлеки данные ДОСЛОВНО, как напечатано, на языке оригинала (обычно русский). Правила:
 - Имена людей — полной формой, как напечатано («Виктория Терешкина», не «В. Терешкина»).
-- title: название произведения; genre: жанр (опера/балет/драма/концерт…); author: автор исходного произведения (композитор/драматург), одно имя, ИМЕНИТЕЛЬНЫЙ падеж (кто, а не кого) — даже если на странице он упомянут в другом падеже (например, «по операм Вагнера» → «Рихард Вагнер»); то же для program[].author. Падеж важен: сайт связывает повторные встречи с одним и тем же автором по точному совпадению строки.
+- title: название произведения; genre: жанр (опера/балет/драма/концерт…); author: автор исходного произведения (композитор/драматург), одно имя, ИМЕНИТЕЛЬНЫЙ падеж (кто, а не кого) — даже если на странице он упомянут в другом падеже (например, «по операм Вагнера» → «Рихард Вагнер»); ПОЛНЫМ именем, даже если на программке напечатаны только инициалы известного автора (например, «В. А. Моцарт» → «Вольфганг Амадей Моцарт», «Ф. Мендельсон» → «Феликс Мендельсон») — так же, как для имён людей выше; то же для program[].author. Падеж и полнота имени важны: сайт связывает повторные встречи с одним и тем же автором по точному совпадению строки, и сокращённая форма создаёт для сайта отдельного, «нового» автора вместо уже задокументированного.
 - program: ТОЛЬКО для сборных концертов из нескольких самостоятельных произведений разных
   авторов — по одной записи {author, title} на произведение, в порядке программы. Если
   исполняется одно произведение целиком (опера/балет) — program: [] (пустой массив), эта
@@ -140,7 +140,11 @@ const PARSE_PROMPT = `Это программка/афиша театральн�
   URL афиши mariinsky.ru код сцены перед временем: 1 = Историческая сцена, 2 = Мариинский-2,
   3 = Концертный зал. Для Зарядья theatre всегда «Концертный зал "Зарядье"» (даже если в
   программке напечатано разговорное «Зал Зарядье» — это то же самое место), scene — одно из:
-  «Большой зал», «Малый зал».
+  «Большой зал», «Малый зал». Для Московской консерватории theatre всегда «Московская
+  консерватория», scene — одно из: «Большой зал», «Малый зал», «Рахманиновский зал» — НЕ
+  составной строкой вида «Большой зал консерватории» целиком ни в theatre, ни в scene: раздели
+  на театр (Московская консерватория) и сцену (Большой зал), даже если на программке напечатано
+  одной строкой без явного названия театра.
 - date: ГГГГ-ММ-ДД; time: ЧЧ:ММ; premiere: даты премьеры постановки как в тексте.
 - staff: постановочная группа (дирижёр, режиссёр, хореограф, художники, хормейстеры…); cast: исполнители с партиями/ролями.
 - Если в программке отдельным блоком назван коллектив-исполнитель (оркестр, хор, ансамбль —
@@ -212,17 +216,103 @@ export function undocumentedWorks(index, works) {
  *  затирает уже задокументированный профиль. Приводим title к уже известной
  *  задокументированной форме (сверка без кавычек/регистра/ё), если она есть в индексе,
  *  ДО проверки undocumentedWorks — мутирует parsed на месте, тем же title спектакль и
- *  запишется в items/. */
-function canonicalizeWorkTitles(index, parsed) {
+ *  запишется в items/. Возвращает список замен — оператор должен увидеть их в превью
+ *  ДО подтверждения, а не узнавать о них постфактум из файла (см.
+ *  sessions/2026-08-02_llm-output-gates.md). */
+export function canonicalizeWorkTitles(index, parsed) {
   const documented = (index && index.works) || {};
   const canonical = new Map();
   for (const title of Object.keys(documented)) canonical.set(normalizeTitle(title), title);
-  const resolve = (title) => canonical.get(normalizeTitle(title)) || title;
+  const changes = [];
+  const resolve = (title) => {
+    const match = canonical.get(normalizeTitle(title));
+    if (match && match !== title) changes.push({ kind: "произведение", from: title, to: match });
+    return match || title;
+  };
   if (parsed.program?.length) {
     for (const w of parsed.program) w.title = resolve(w.title);
   } else if (parsed.title) {
     parsed.title = resolve(parsed.title);
   }
+  return changes;
+}
+
+/** Театр печатается то полным официальным названием, то разговорным вариантом («Зал
+ *  Зарядье» / «Концертный зал "Зарядье"») — точное совпадение их не связывает, и
+ *  insertVenueDescription() молча создаёт вторую секцию в inventory/venues.md вместо
+ *  того чтобы найти уже существующую. Эвристика: сравниваем по «отличительному» слову
+ *  названия, отбросив общие «зал/театр/концертный/сцена/дворец/дом» — если ровно один уже
+ *  задокументированный театр разделяет с parsed.theatre такое слово, считаем это тем же
+ *  местом. Единственное совпадение — иначе (0 или >1) не трогаем: разночтение должно быть
+ *  однозначным, чтобы не подменить театр по ошибке. */
+const VENUE_STOPWORDS = /^(зал|театр|концертный|сцена|дворец|дом|им\.?)$/i;
+export function venueKeywords(name) {
+  return name.toLowerCase().replace(/[«»"]/g, "").split(/\s+/).filter((w) => w && !VENUE_STOPWORDS.test(w));
+}
+export function canonicalizeTheatre(index, parsed) {
+  if (!parsed.theatre) return null;
+  const known = Object.keys((index && index.venues) || {});
+  if (known.includes(parsed.theatre)) return null;
+  const parsedKw = venueKeywords(parsed.theatre);
+  if (!parsedKw.length) return null;
+  const matches = known.filter((t) => venueKeywords(t).some((w) => parsedKw.includes(w)));
+  if (matches.length !== 1) return null;
+  const from = parsed.theatre;
+  parsed.theatre = matches[0];
+  return { kind: "театр", from, to: matches[0] };
+}
+
+/** Композиторов/драматургов на программках часто печатают инициалами («В. А. Моцарт»),
+ *  а уже задокументированный профиль — полным именем («Вольфганг Амадей Моцарт»): точное
+ *  совпадение их не связывает, и бот заводит второй, «новый» профиль того же человека.
+ *  Сопоставление по фамилии (последнее слово) + совпадению начальных букв имени/отчества с
+ *  инициалами — сознательно НЕ применяется к обычному составу/постановщикам (authorsOf
+ *  берёт только автора произведения): однофамильцы среди исполнителей — обычное дело, а
+ *  автор, по конвенции архива, всегда одна и та же каноническая сущность (см.
+ *  people/_template.md, P-shared-facts-own-entity). */
+export function matchAbbreviatedName(shortName, knownNames) {
+  const shortTokens = shortName.trim().split(/\s+/);
+  const shortSurname = shortTokens[shortTokens.length - 1].toLowerCase();
+  const initials = shortTokens.slice(0, -1);
+  if (!initials.length || !initials.every((t) => /^[а-яё]\.?$/i.test(t))) return null;
+  for (const full of knownNames) {
+    const fullTokens = full.trim().split(/\s+/);
+    if (fullTokens.length <= initials.length) continue;
+    if (fullTokens[fullTokens.length - 1].toLowerCase() !== shortSurname) continue;
+    const given = fullTokens.slice(0, -1);
+    if (given.length < initials.length) continue;
+    if (initials.every((init, i) => given[i] && given[i][0].toLowerCase() === init[0].toLowerCase())) return full;
+  }
+  return null;
+}
+export function canonicalizeAuthorNames(index, parsed) {
+  const known = Object.keys((index && index.people) || {});
+  const changes = [];
+  const resolve = (name) => {
+    if (!name) return name;
+    const match = matchAbbreviatedName(name, known);
+    if (match) changes.push({ kind: "автор", from: name, to: match });
+    return match || name;
+  };
+  if (parsed.author) parsed.author = resolve(parsed.author);
+  for (const w of parsed.program || []) if (w.author) w.author = resolve(w.author);
+  return changes;
+}
+
+/** Механические проверки, замеченные на практике сегодня, которые не требуют индекса —
+ *  предупреждают оператора В ПРЕВЬЮ, ДО подтверждения, вместо того чтобы дефект ушёл в
+ *  архив незамеченным (пустой Театр при непустой Сцене — именно так выглядела программка
+ *  консерватории, где сцена и театр не были разделены). Не блокируют — оператор мог сам
+ *  знать то, чего не знает эта эвристика; просто делают риск видимым. */
+export function gateWarnings(parsed) {
+  const warnings = [];
+  if (!parsed.theatre && parsed.scene) {
+    warnings.push(`Театр не распознан, а Сцена — «${parsed.scene}»: похоже на неразделённое название площадки (площадка+сцена одной строкой) — проверьте вручную.`);
+  }
+  if (!parsed.theatre && !parsed.scene) {
+    warnings.push("Театр не распознан.");
+  }
+  return warnings;
 }
 
 async function draftWorkNotes(env, works) {
@@ -855,7 +945,7 @@ function stripHtml(html) {
 
 // ------------------------------------------------------------- основной поток
 
-function preview(p, known, workNotes, participantNotes) {
+function preview(p, known, workNotes, participantNotes, changes, warnings) {
   const lines = [
     `🎭 <b>${p.title}</b>${p.genre ? ` (${p.genre})` : ""}`,
     !p.program?.length && p.author ? `Автор: ${p.author}` : "",
@@ -864,6 +954,14 @@ function preview(p, known, workNotes, participantNotes) {
     p.staff && p.staff.length ? `Постановщики: ${p.staff.length}` : "",
     p.cast && p.cast.length ? `Состав: ${p.cast.map((c) => `${c.role} — ${c.names.join(", ")}`).slice(0, 6).join("; ")}` : "",
   ].filter(Boolean);
+  if ((warnings || []).length) {
+    lines.push("", "⚠️ <b>Проверьте перед подтверждением:</b>");
+    for (const w of warnings) lines.push(`• ${w}`);
+  }
+  if ((changes || []).length) {
+    lines.push("", "🔗 <b>Приведено к уже известной форме:</b>");
+    for (const c of changes) lines.push(`• [${c.kind}] ${c.from} → ${c.to}`);
+  }
   if (known.length) {
     lines.push("", "👀 <b>Вы уже встречали:</b>", ...known);
   }
@@ -889,12 +987,19 @@ async function proposeIngest(env, chatId, parsed, sourceUrl, photos) {
     await tg(env, "sendMessage", { chat_id: chatId, text: "Не удалось распознать название или дату — уточните текстом, пожалуйста." });
     return;
   }
+  const warnings = gateWarnings(parsed);
   let known = [];
   let workNotes = [];
   let participantNotes = [];
+  let changes = [];
   try {
     const index = await (await fetch(`${env.SITE_URL}/data/index.json`, { cf: { cacheTtl: 60 } })).json();
-    canonicalizeWorkTitles(index, parsed);
+    const theatreChange = canonicalizeTheatre(index, parsed);
+    changes = [
+      ...canonicalizeWorkTitles(index, parsed),
+      ...(theatreChange ? [theatreChange] : []),
+      ...canonicalizeAuthorNames(index, parsed),
+    ];
     known = knownPeopleLines(index, peopleOf(parsed));
     const undocumented = undocumentedWorks(index, worksOf(parsed));
     if (undocumented.length) workNotes = await draftWorkNotes(env, undocumented);
@@ -911,7 +1016,7 @@ async function proposeIngest(env, chatId, parsed, sourceUrl, photos) {
   await env.PENDING.put(key, JSON.stringify({ parsed, sourceUrl, photos: photos || [], workNotes, participantNotes }), { expirationTtl: 86400 });
   await tg(env, "sendMessage", {
     chat_id: chatId,
-    text: preview(parsed, known, workNotes, participantNotes) + "\n\nДобавить в архив?",
+    text: preview(parsed, known, workNotes, participantNotes, changes, warnings) + "\n\nДобавить в архив?",
     parse_mode: "HTML",
     reply_markup: {
       inline_keyboard: [[
