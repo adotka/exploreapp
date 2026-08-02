@@ -34,6 +34,7 @@
 | 2022-04-06 | Троянцы | Мариинский театр / Мариинский-2 | [items/2022-04-06_mariinsky_troyantsy.md](../items/2022-04-06_mariinsky_troyantsy.md) |
 | 2022-04-05 | Бетховен. Симфония № 9 Прокофьев. «Александр Невский» | Мариинский театр / Мариинский-2 | [items/2022-04-05_mariinsky_bethoven-simfoniya-9-prokofev-aleksandr-nevskii.md](../items/2022-04-05_mariinsky_bethoven-simfoniya-9-prokofev-aleksandr-nevskii.md) |
 | 2022-04-04 | Аида | Мариинский театр / Мариинский-2 | [items/2022-04-04_mariinsky_aida.md](../items/2022-04-04_mariinsky_aida.md) |
+| 2022-03-24 | ШЕДЕВРЫ ВЕЛИКИХ КОМПОЗИТОРОВ |  / Большой зал консерватории | [items/2022-03-24_teatr_shedevry-velikih-kompozitorov.md](../items/2022-03-24_teatr_shedevry-velikih-kompozitorov.md) |
 | 2022-01-03 | Любовь к трем апельсинам (полусценическое исполнение) | Мариинский театр / Концертный зал | [items/2022-01-03_mariinsky_lyubov-k-trem-apelsinam-polustsenicheskoe-ispolnenie.md](../items/2022-01-03_mariinsky_lyubov-k-trem-apelsinam-polustsenicheskoe-ispolnenie.md) |
 | 2022-01-02 | Летучая мышь | Мариинский театр / Мариинский-2 | [items/2022-01-02_mariinsky_letuchaya-mysh.md](../items/2022-01-02_mariinsky_letuchaya-mysh.md) |
 | 2021-03-27 | Жизель | Мариинский театр / Историческая сцена | [items/2021-03-27_mariinsky_zhizel.md](../items/2021-03-27_mariinsky_zhizel.md) |
