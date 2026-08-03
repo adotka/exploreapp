@@ -2,7 +2,8 @@ name = "i-knew-him-bot"
 main = "worker.js"
 compatibility_date = "2026-07-01"
 
-# KV для ожидающих подтверждения разборов (создать: wrangler kv namespace create PENDING)
+# KV для ожидающих подтверждения разборов, а также для журнала последнего разбора (/log,
+# ключ "log:last") — создать: wrangler kv namespace create PENDING
 [[kv_namespaces]]
 binding = "PENDING"
 id = "a4c8f804a5cd434d9b74cae3ea4e0ea0"
@@ -10,12 +11,12 @@ id = "a4c8f804a5cd434d9b74cae3ea4e0ea0"
 [vars]
 GITHUB_REPO = "adotka/exploreapp"
 SITE_URL = "https://adotka.github.io/exploreapp"
-MODEL = "claude-opus-4-8"          # дешевле/менее точно: "claude-haiku-4-5" — не использовать
-                                    # без явной причины: на скане 2024-12-08 (okho — физическая
-                                    # драма, два столбца текста + редкие татарские/башкирские
-                                    # имена) Haiku исказил несколько имён, пропустил целый
-                                    # коллектив-исполнитель и всю секцию "Программа" — см.
-                                    # sessions/2026-08-02_okho-rerecognition.md
+MODEL = "claude-sonnet-5"           # оператор явно выбрал Sonnet 5 (2026-08-02); НЕ переключать
+                                    # на "claude-haiku-4-5" без явной причины: на скане
+                                    # 2024-12-08 (okho — физическая драма, два столбца текста +
+                                    # редкие татарские/башкирские имена) Haiku исказил несколько
+                                    # имён, пропустил целый коллектив-исполнитель и всю секцию
+                                    # "Программа" — см. sessions/2026-08-02_okho-rerecognition.md
 # Список Telegram user id через запятую — несколько доверенных аккаунтов пишут в один
 # и тот же архив (см. runbook/bot.md, «Добавить ещё один доверенный аккаунт»).
 ALLOWED_CHAT_IDS = "28209146,1001791014,860046579"

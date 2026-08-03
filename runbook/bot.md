@@ -86,8 +86,13 @@ No webhook, KV, or secret changes needed — the allowlist is the only thing tha
 
 ## Operating notes
 
-- Model: `MODEL` var in `wrangler.toml` (`claude-opus-4-8` default; `claude-haiku-4-5` is ~5×
-  cheaper and usually fine for clean scans). Redeploy after changing vars.
+- Model: `MODEL` var in `wrangler.toml` (`claude-sonnet-5` — operator's explicit choice,
+  2026-08-02; `claude-haiku-4-5` is ~5× cheaper but is NOT reliable on dense/multi-column scans
+  or rare names — see `sessions/2026-08-02_okho-rerecognition.md`). Redeploy after changing vars.
+- **`/log`** — shows what happened on the last parse (source, model, duration, any gate
+  warnings/canonicalizations from `bot/worker.js`, commit status, raw parsed JSON). Reads a
+  single KV entry (`log:last`) written by `claude()`/`proposeIngest()`/`confirmIngest()` — a
+  snapshot of the most recent attempt, not a history.
 - Location flow currently knows only the Mariinsky's three buildings; extend
   `inventory/venues.md` + `VENUES` in the worker when a new theatre appears.
 - Bot code changes are **project mind** — session + operator approval, then `npx wrangler deploy`.
