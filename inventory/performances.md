@@ -12,6 +12,7 @@
 | 2025-12-13 | Волшебная флейта | Мариинский театр / Мариинский-2 | [items/2025-12-13_mariinsky_volshebnaya-fleita.md](../items/2025-12-13_mariinsky_volshebnaya-fleita.md) |
 | 2025-02-09 | Аида | Мариинский театр / Мариинский-2 | [items/2025-02-09_mariinsky_aida.md](../items/2025-02-09_mariinsky_aida.md) |
 | 2025-02-08 | Король шахмат | Мариинский театр / Концертный зал | [items/2025-02-08_mariinsky_korol-shahmat.md](../items/2025-02-08_mariinsky_korol-shahmat.md) |
+| 2025-01-06 | Best of Piazzolla | Концертный зал "Зарядье" / Большой зал | [items/2025-01-06_zaryadye_best-of-piazzolla.md](../items/2025-01-06_zaryadye_best-of-piazzolla.md) |
 | 2024-12-08 | okho – физическая драма | Концертный зал "Зарядье" / Большой зал | [items/2024-12-08_zaryadye_okho-fizicheskaya-drama.md](../items/2024-12-08_zaryadye_okho-fizicheskaya-drama.md) |
 | 2024-10-13 | Чайковский. «Ромео и Джульетта» Прокофьев. Фрагменты из музыки балета «Золушка» Шостакович. Симфония № 6 | Мариинский театр / Концертный зал | [items/2024-10-13_mariinsky_chaikovskii-romeo-i-dzhuletta-prokofev-fragmenty-iz-muzyki-baleta-zolushka-shostakovich-simfoniya-6.md](../items/2024-10-13_mariinsky_chaikovskii-romeo-i-dzhuletta-prokofev-fragmenty-iz-muzyki-baleta-zolushka-shostakovich-simfoniya-6.md) |
 | 2024-10-12 | Парсифаль | Мариинский театр / Историческая сцена | [items/2024-10-12_mariinsky_parsifal.md](../items/2024-10-12_mariinsky_parsifal.md) |
