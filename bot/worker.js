@@ -299,19 +299,14 @@ export function canonicalizeAuthorNames(index, parsed) {
   return changes;
 }
 
-/** Механические проверки, замеченные на практике сегодня, которые не требуют индекса —
- *  предупреждают оператора В ПРЕВЬЮ, ДО подтверждения, вместо того чтобы дефект ушёл в
- *  архив незамеченным (пустой Театр при непустой Сцене — именно так выглядела программка
- *  консерватории, где сцена и театр не были разделены). Не блокируют — оператор мог сам
- *  знать то, чего не знает эта эвристика; просто делают риск видимым. */
+/** Механические проверки, не требующие индекса — предупреждают оператора В ПРЕВЬЮ, ДО
+ *  подтверждения, вместо того чтобы дефект ушёл в архив незамеченным. Не блокируют — место
+ *  для будущих мягких проверок (в отличие от пустого Театра, который теперь жёсткий гейт —
+ *  см. askForVenue() — потому что мягкое предупреждение однажды всё же было подтверждено
+ *  оператором «как есть», см. sessions/2026-08-03_hard-venue-gate.md). Сейчас проверок нет —
+ *  функция намеренно оставлена как точка расширения. */
 export function gateWarnings(parsed) {
   const warnings = [];
-  if (!parsed.theatre && parsed.scene) {
-    warnings.push(`Театр не распознан, а Сцена — «${parsed.scene}»: похоже на неразделённое название площадки (площадка+сцена одной строкой) — проверьте вручную.`);
-  }
-  if (!parsed.theatre && !parsed.scene) {
-    warnings.push("Театр не распознан.");
-  }
   return warnings;
 }
 
@@ -1018,9 +1013,47 @@ function preview(p, known, workNotes, participantNotes, changes, warnings) {
   return lines.join("\n");
 }
 
+/** Пустой Театр — жёсткий гейт, не предупреждение: раньше это была строка в gateWarnings()
+ *  («Театр не распознан...» в превью), и оператор однажды подтвердил показ с пустым Театром
+ *  «как есть» (см. items/2024-06-23_..._simona-kermes...), не заметив предупреждение среди
+ *  остального текста превью — пустой Театр ломает группировку по театрам на сайте и
+ *  theatreSlug() (даёт заглушку «teatr» вместо реального имени файла), так что риск того же
+ *  дефекта того не стоит. Вместо показа превью с дырой — останавливаем разбор и спрашиваем
+ *  оператора напрямую (askForVenue), продолжая только после ответа (handleVenueReply). */
+export async function askForVenue(env, chatId, parsed, sourceUrl, photos) {
+  await env.PENDING.put(venueAskKey(chatId), JSON.stringify({ parsed, sourceUrl, photos: photos || [] }), { expirationTtl: 3600 });
+  await tg(env, "sendMessage", {
+    chat_id: chatId,
+    text: `❓ Не удалось определить театр/площадку${parsed.scene ? ` (сцена распознана как «${parsed.scene}»)` : ""}. Напишите, пожалуйста, в каком театре проходил показ — и я продолжу разбор.`,
+  });
+}
+
+export function venueAskKey(chatId) {
+  return `venueask:${chatId}`;
+}
+
+/** Ответ на askForVenue() — свободный текст, а не команда/ссылка, поэтому перехватывается в
+ *  handleUpdate() раньше обычного handleFreeText(), но только если для этого чата реально
+ *  ждали ответ (иначе — false, и сообщение идёт по обычному пути). */
+export async function handleVenueReply(env, chatId, venueText) {
+  const key = venueAskKey(chatId);
+  const raw = await env.PENDING.get(key);
+  if (!raw) return false;
+  await env.PENDING.delete(key);
+  const { parsed, sourceUrl, photos } = JSON.parse(raw);
+  parsed.theatre = venueText.trim();
+  await updateLog(env, { operatorSuppliedVenue: venueText.trim() });
+  await proposeIngest(env, chatId, parsed, sourceUrl, photos);
+  return true;
+}
+
 async function proposeIngest(env, chatId, parsed, sourceUrl, photos) {
   if (!parsed.title || !parsed.date) {
     await tg(env, "sendMessage", { chat_id: chatId, text: "Не удалось распознать название или дату — уточните текстом, пожалуйста." });
+    return;
+  }
+  if (!parsed.theatre) {
+    await askForVenue(env, chatId, parsed, sourceUrl, photos);
     return;
   }
   const warnings = gateWarnings(parsed);
@@ -1557,6 +1590,8 @@ async function handleUpdate(env, ctx, update) {
       const url = message.text.match(/https?:\/\/\S+/)[0];
       await tg(env, "sendMessage", { chat_id: chatId, text: "🔗 Разбираю страницу…" });
       await handleUrl(env, chatId, url);
+    } else if (message.text && await handleVenueReply(env, chatId, message.text)) {
+      // обработано внутри handleVenueReply — ждали ответ на askForVenue() для этого чата
     } else if (message.text) {
       await handleFreeText(env, chatId, message.text);
     }
