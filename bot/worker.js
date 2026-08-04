@@ -685,6 +685,20 @@ const FREE_QUERY_PROMPT = `Зритель просит найти в архив�
 Если в сообщении нет узнаваемого названия спектакля ИЛИ даты — верни все поля пустыми
 строками (это значит, что это не запрос на поиск, а что-то другое).`;
 
+const TITLE_DATE_CLARIFY_SCHEMA = {
+  type: "object", additionalProperties: false,
+  required: ["title", "date"],
+  properties: { title: { type: "string" }, date: { type: "string" } },
+};
+
+const TITLE_DATE_CLARIFY_PROMPT = `Оператор уточняет недостающие данные показа, который сейчас разбирается ботом (название
+и/или дату не удалось распознать автоматически из присланного материала). Извлеки из ответа
+оператора:
+- title: название спектакля/концерта, как указано (не уточняй и не исправляй).
+- date: дата показа в формате ГГГГ-ММ-ДД. Год обязателен — если год не указан явно и не
+  следует из контекста, оставь "".
+Если оператор не назвал соответствующее поле в этом сообщении — оставь его пустой строкой "".`;
+
 // ------------------------------------------------------------ рендеринг item
 
 export function renderItem(p, sourceUrl, playbillPath) {
@@ -1019,12 +1033,16 @@ function preview(p, known, workNotes, participantNotes, changes, warnings) {
  *  остального текста превью — пустой Театр ломает группировку по театрам на сайте и
  *  theatreSlug() (даёт заглушку «teatr» вместо реального имени файла), так что риск того же
  *  дефекта того не стоит. Вместо показа превью с дырой — останавливаем разбор и спрашиваем
- *  оператора напрямую (askForVenue), продолжая только после ответа (handleVenueReply). */
+ *  оператора напрямую (askForVenue), продолжая только после ответа (handleVenueReply).
+ *  Кнопка «❌ Отменить» использует тот же общий callback-обработчик "x:", что и отмена в
+ *  askDuplicateConfirm() — он просто удаляет PENDING по переданному ключу, так что достаточно
+ *  передать venueAskKey(chatId) как callback_data, без отдельного состояния под ожидание отмены. */
 export async function askForVenue(env, chatId, parsed, sourceUrl, photos) {
   await env.PENDING.put(venueAskKey(chatId), JSON.stringify({ parsed, sourceUrl, photos: photos || [] }), { expirationTtl: 3600 });
   await tg(env, "sendMessage", {
     chat_id: chatId,
     text: `❓ Не удалось определить театр/площадку${parsed.scene ? ` (сцена распознана как «${parsed.scene}»)` : ""}. Напишите, пожалуйста, в каком театре проходил показ — и я продолжу разбор.`,
+    reply_markup: { inline_keyboard: [[{ text: "❌ Отменить", callback_data: `x:${venueAskKey(chatId)}` }]] },
   });
 }
 
@@ -1043,6 +1061,53 @@ export async function handleVenueReply(env, chatId, venueText) {
   const { parsed, sourceUrl, photos } = JSON.parse(raw);
   parsed.theatre = venueText.trim();
   await updateLog(env, { operatorSuppliedVenue: venueText.trim() });
+  await proposeIngest(env, chatId, parsed, sourceUrl, photos);
+  return true;
+}
+
+/** Пустые Название/Дата — тот же жёсткий гейт, что и askForVenue() выше, и по той же причине:
+ *  раньше это было одно неспецифичное сообщение («Не удалось распознать название или дату —
+ *  уточните текстом»), которое не говорило, чего именно не хватает, и не ждало ответа —
+ *  свободный текст оператора после него уходил в обычный handleFreeText() (поиск по архиву),
+ *  а не подставлялся в разбираемый показ. Теперь сообщение называет ровно недостающее поле
+ *  (или оба), и ответ перехватывается handleTitleDateReply() так же, как handleVenueReply(). */
+export async function askForTitleDate(env, chatId, parsed, sourceUrl, photos) {
+  await env.PENDING.put(titleDateAskKey(chatId), JSON.stringify({ parsed, sourceUrl, photos: photos || [] }), { expirationTtl: 3600 });
+  const missingTitle = !parsed.title;
+  const missingDate = !parsed.date;
+  let what;
+  if (missingTitle && missingDate) what = "название и дату показа";
+  else if (missingTitle) what = `название показа (дата определена как ${parsed.date})`;
+  else what = `дату показа (название определено как «${parsed.title}»)`;
+  await tg(env, "sendMessage", {
+    chat_id: chatId,
+    text: `❓ Не удалось распознать ${what}. Напишите, пожалуйста, текстом — и я продолжу разбор.`,
+    reply_markup: { inline_keyboard: [[{ text: "❌ Отменить", callback_data: `x:${titleDateAskKey(chatId)}` }]] },
+  });
+}
+
+export function titleDateAskKey(chatId) {
+  return `titledateask:${chatId}`;
+}
+
+/** Ответ на askForTitleDate() — свободный текст, перехватывается в handleUpdate() так же, как
+ *  handleVenueReply(), только если для этого чата реально ждали ответ. Извлекает title/date из
+ *  текста через claude() и подставляет только недостающие поля (уже распознанное — как дата при
+ *  нераспознанном названии — не трогаем), затем возвращает разбор в proposeIngest(); если
+ *  оператор указал не всё, чего не хватало, proposeIngest() снова спросит через
+ *  askForTitleDate() — так же, как повторный дубль-вопрос при неполном ответе на askForVenue(). */
+export async function handleTitleDateReply(env, chatId, replyText) {
+  const key = titleDateAskKey(chatId);
+  const raw = await env.PENDING.get(key);
+  if (!raw) return false;
+  await env.PENDING.delete(key);
+  const { parsed, sourceUrl, photos } = JSON.parse(raw);
+  const q = await claude(env, [
+    { type: "text", text: `${TITLE_DATE_CLARIFY_PROMPT}\n\nОтвет оператора:\n${replyText}` },
+  ], TITLE_DATE_CLARIFY_SCHEMA, 512);
+  if (!parsed.title && q.title) parsed.title = q.title.trim();
+  if (!parsed.date && q.date) parsed.date = q.date.trim();
+  await updateLog(env, { operatorSuppliedTitleDate: { title: q.title, date: q.date } });
   await proposeIngest(env, chatId, parsed, sourceUrl, photos);
   return true;
 }
@@ -1090,7 +1155,7 @@ export async function confirmDuplicateAnyway(env, cb) {
 
 async function proposeIngest(env, chatId, parsed, sourceUrl, photos, skipDuplicateCheck) {
   if (!parsed.title || !parsed.date) {
-    await tg(env, "sendMessage", { chat_id: chatId, text: "Не удалось распознать название или дату — уточните текстом, пожалуйста." });
+    await askForTitleDate(env, chatId, parsed, sourceUrl, photos);
     return;
   }
   if (!parsed.theatre) {
@@ -1649,6 +1714,8 @@ async function handleUpdate(env, ctx, update) {
       await handleUrl(env, chatId, url);
     } else if (message.text && await handleVenueReply(env, chatId, message.text)) {
       // обработано внутри handleVenueReply — ждали ответ на askForVenue() для этого чата
+    } else if (message.text && await handleTitleDateReply(env, chatId, message.text)) {
+      // обработано внутри handleTitleDateReply — ждали ответ на askForTitleDate() для этого чата
     } else if (message.text) {
       await handleFreeText(env, chatId, message.text);
     }
