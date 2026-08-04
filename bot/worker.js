@@ -299,19 +299,14 @@ export function canonicalizeAuthorNames(index, parsed) {
   return changes;
 }
 
-/** Механические проверки, замеченные на практике сегодня, которые не требуют индекса —
- *  предупреждают оператора В ПРЕВЬЮ, ДО подтверждения, вместо того чтобы дефект ушёл в
- *  архив незамеченным (пустой Театр при непустой Сцене — именно так выглядела программка
- *  консерватории, где сцена и театр не были разделены). Не блокируют — оператор мог сам
- *  знать то, чего не знает эта эвристика; просто делают риск видимым. */
+/** Механические проверки, не требующие индекса — предупреждают оператора В ПРЕВЬЮ, ДО
+ *  подтверждения, вместо того чтобы дефект ушёл в архив незамеченным. Не блокируют — место
+ *  для будущих мягких проверок (в отличие от пустого Театра, который теперь жёсткий гейт —
+ *  см. askForVenue() — потому что мягкое предупреждение однажды всё же было подтверждено
+ *  оператором «как есть», см. sessions/2026-08-03_hard-venue-gate.md). Сейчас проверок нет —
+ *  функция намеренно оставлена как точка расширения. */
 export function gateWarnings(parsed) {
   const warnings = [];
-  if (!parsed.theatre && parsed.scene) {
-    warnings.push(`Театр не распознан, а Сцена — «${parsed.scene}»: похоже на неразделённое название площадки (площадка+сцена одной строкой) — проверьте вручную.`);
-  }
-  if (!parsed.theatre && !parsed.scene) {
-    warnings.push("Театр не распознан.");
-  }
   return warnings;
 }
 
@@ -354,41 +349,77 @@ ${f.join("\n")}
  *  сработать catch в handleUpdate, и оператор не получает вообще никакого ответа
  *  (см. sessions/2026-08-02_bot-photo-timeout.md). AbortController здесь превращает
  *  зависание в обычную catchable-ошибку с понятным текстом. */
-async function claude(env, blocks, schema, maxTokens = 8192) {
-  const model = env.MODEL || "claude-opus-4-8";
-  const outputConfig = { format: { type: "json_schema", schema } };
-  if (!/^claude-haiku-/.test(model)) outputConfig.effort = "medium";
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-  let resp;
+// ------------------------------------------------------ журнал последнего разбора (/log)
+
+/** Одна запись в KV под фиксированным ключом — не история, а срез «что произошло в
+ *  последний раз», для команды /log («покажи, что именно случилось»). startLog()
+ *  ПЕРЕЗАПИСЫВАЕТ запись целиком (новый разбор не должен унаследовать committed/files
+ *  предыдущего); updateLog() дополняет её же на более поздних этапах того же разбора
+ *  (proposeIngest, confirmIngest) — они всегда идут ПОСЛЕ вызова claude() в одном и том же
+ *  жизненном цикле разбора. Ошибки самого логирования не должны ронять разбор — только try. */
+const LOG_KEY = "log:last";
+export async function startLog(env, patch) {
+  const entry = { ts: new Date().toISOString(), ...patch };
+  try { await env.PENDING.put(LOG_KEY, JSON.stringify(entry)); } catch (e) { /* не критично */ }
+  return entry;
+}
+export async function updateLog(env, patch) {
+  let entry = {};
   try {
-    resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        output_config: outputConfig,
-        messages: [{ role: "user", content: blocks }],
-      }),
-      signal: controller.signal,
-    });
+    const raw = await env.PENDING.get(LOG_KEY);
+    if (raw) entry = JSON.parse(raw);
+  } catch (e) { /* повреждённая запись — начинаем заново */ }
+  entry = { ...entry, ...patch };
+  try { await env.PENDING.put(LOG_KEY, JSON.stringify(entry)); } catch (e) { /* не критично */ }
+  return entry;
+}
+
+/** source — короткая метка вызывающего потока («photo», «photo-group», «document», «url»,
+ *  «free-text»); передаётся только вызовами, разбирающими программку целиком (PERF_SCHEMA) —
+ *  вспомогательные вызовы (черновики описаний, поиск по афише) в /log не попадают. */
+async function claude(env, blocks, schema, maxTokens = 8192, source = null) {
+  const model = env.MODEL || "claude-sonnet-5";
+  const startedAt = Date.now();
+  try {
+    const outputConfig = { format: { type: "json_schema", schema } };
+    if (!/^claude-haiku-/.test(model)) outputConfig.effort = "medium";
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+    let resp;
+    try {
+      resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          output_config: outputConfig,
+          messages: [{ role: "user", content: blocks }],
+        }),
+        signal: controller.signal,
+      });
+    } catch (e) {
+      if (e.name === "AbortError") throw new Error("Claude API не ответил за 45с (таймаут) — попробуйте ещё раз или пришлите скан попроще");
+      throw e;
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!resp.ok) throw new Error(`Claude API ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+    const msg = await resp.json();
+    if (msg.stop_reason === "refusal") throw new Error("Claude отклонил запрос (refusal)");
+    const text = (msg.content || []).find((b) => b.type === "text");
+    if (!text) throw new Error("Пустой ответ Claude");
+    const parsed = JSON.parse(text.text);
+    if (source) await startLog(env, { source, model, durationMs: Date.now() - startedAt, ok: true, parsed });
+    return parsed;
   } catch (e) {
-    if (e.name === "AbortError") throw new Error("Claude API не ответил за 45с (таймаут) — попробуйте ещё раз или пришлите скан попроще");
+    if (source) await startLog(env, { source, model, durationMs: Date.now() - startedAt, ok: false, error: String(e.message || e).slice(0, 500) });
     throw e;
-  } finally {
-    clearTimeout(timeout);
   }
-  if (!resp.ok) throw new Error(`Claude API ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
-  const msg = await resp.json();
-  if (msg.stop_reason === "refusal") throw new Error("Claude отклонил запрос (refusal)");
-  const text = (msg.content || []).find((b) => b.type === "text");
-  if (!text) throw new Error("Пустой ответ Claude");
-  return JSON.parse(text.text);
 }
 
 const EVENT_CHOICE_SCHEMA = {
@@ -982,9 +1013,47 @@ function preview(p, known, workNotes, participantNotes, changes, warnings) {
   return lines.join("\n");
 }
 
+/** Пустой Театр — жёсткий гейт, не предупреждение: раньше это была строка в gateWarnings()
+ *  («Театр не распознан...» в превью), и оператор однажды подтвердил показ с пустым Театром
+ *  «как есть» (см. items/2024-06-23_..._simona-kermes...), не заметив предупреждение среди
+ *  остального текста превью — пустой Театр ломает группировку по театрам на сайте и
+ *  theatreSlug() (даёт заглушку «teatr» вместо реального имени файла), так что риск того же
+ *  дефекта того не стоит. Вместо показа превью с дырой — останавливаем разбор и спрашиваем
+ *  оператора напрямую (askForVenue), продолжая только после ответа (handleVenueReply). */
+export async function askForVenue(env, chatId, parsed, sourceUrl, photos) {
+  await env.PENDING.put(venueAskKey(chatId), JSON.stringify({ parsed, sourceUrl, photos: photos || [] }), { expirationTtl: 3600 });
+  await tg(env, "sendMessage", {
+    chat_id: chatId,
+    text: `❓ Не удалось определить театр/площадку${parsed.scene ? ` (сцена распознана как «${parsed.scene}»)` : ""}. Напишите, пожалуйста, в каком театре проходил показ — и я продолжу разбор.`,
+  });
+}
+
+export function venueAskKey(chatId) {
+  return `venueask:${chatId}`;
+}
+
+/** Ответ на askForVenue() — свободный текст, а не команда/ссылка, поэтому перехватывается в
+ *  handleUpdate() раньше обычного handleFreeText(), но только если для этого чата реально
+ *  ждали ответ (иначе — false, и сообщение идёт по обычному пути). */
+export async function handleVenueReply(env, chatId, venueText) {
+  const key = venueAskKey(chatId);
+  const raw = await env.PENDING.get(key);
+  if (!raw) return false;
+  await env.PENDING.delete(key);
+  const { parsed, sourceUrl, photos } = JSON.parse(raw);
+  parsed.theatre = venueText.trim();
+  await updateLog(env, { operatorSuppliedVenue: venueText.trim() });
+  await proposeIngest(env, chatId, parsed, sourceUrl, photos);
+  return true;
+}
+
 async function proposeIngest(env, chatId, parsed, sourceUrl, photos) {
   if (!parsed.title || !parsed.date) {
     await tg(env, "sendMessage", { chat_id: chatId, text: "Не удалось распознать название или дату — уточните текстом, пожалуйста." });
+    return;
+  }
+  if (!parsed.theatre) {
+    await askForVenue(env, chatId, parsed, sourceUrl, photos);
     return;
   }
   const warnings = gateWarnings(parsed);
@@ -1011,6 +1080,8 @@ async function proposeIngest(env, chatId, parsed, sourceUrl, photos) {
     ];
     if (entries.length) participantNotes = await draftParticipantNotes(env, entries);
   } catch (e) { /* индекс ещё не опубликован, или черновик описаний не удался — не критично */ }
+
+  await updateLog(env, { gateWarnings: warnings, canonicalizations: changes, finalParsed: parsed });
 
   const key = crypto.randomUUID();
   await env.PENDING.put(key, JSON.stringify({ parsed, sourceUrl, photos: photos || [], workNotes, participantNotes }), { expirationTtl: 86400 });
@@ -1066,8 +1137,10 @@ async function confirmIngest(env, cb) {
   const participantsNote = newParticipants.length || newVenue
     ? `\n\nНовые участники: ${[...newParticipants.map((e) => e.name), ...(newVenue ? [newVenue.name] : [])].join(", ")}.`
     : "";
-  await commitFiles(env, files, `bot: ingest ${p.title} (${p.date})\n\nПодтверждено в Telegram: ${confirmedBy}.${worksNote}${participantsNote}`);
+  const commitMessage = `bot: ingest ${p.title} (${p.date})\n\nПодтверждено в Telegram: ${confirmedBy}.${worksNote}${participantsNote}`;
+  await commitFiles(env, files, commitMessage);
   await env.PENDING.delete(key);
+  await updateLog(env, { committed: true, files: files.map((f) => f.path), commitMessage: `bot: ingest ${p.title} (${p.date})` });
   await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Добавлено ✅" });
 
   let known = [];
@@ -1179,7 +1252,7 @@ async function handleUrl(env, chatId, url, overrides) {
   const parsed = await claude(env, [{
     type: "text",
     text: `${PARSE_PROMPT}\n\nURL страницы: ${url}\n\nТекст страницы:\n${pageText}`,
-  }], PERF_SCHEMA);
+  }], PERF_SCHEMA, 8192, "url");
   if (overrides) Object.assign(parsed, overrides);
   await proposeIngest(env, chatId, parsed, url, []);
 }
@@ -1264,7 +1337,7 @@ async function handleFreeText(env, chatId, text) {
   }
   const parsed = await claude(env, [
     { type: "text", text: `${PARSE_PROMPT}\n\nОписание от зрителя:\n${text}` },
-  ], PERF_SCHEMA);
+  ], PERF_SCHEMA, 8192, "free-text");
   await proposeIngest(env, chatId, parsed, "", []);
 }
 
@@ -1278,7 +1351,7 @@ async function handlePhoto(env, chatId, message) {
   const parsed = await claude(env, [
     { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
     { type: "text", text: PARSE_PROMPT + context },
-  ], PERF_SCHEMA);
+  ], PERF_SCHEMA, 8192, "photo");
   await proposeIngest(env, chatId, parsed, "", [b64]);
 }
 
@@ -1378,7 +1451,7 @@ async function parsePhotoGroup(env, cb) {
   await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Разбираю…" });
   await tg(env, "editMessageText", { chat_id: chatId, message_id: cb.message.message_id, text: "🔍 Разбираю…" });
   const context = caption ? `\nПодпись от зрителя: ${caption}` : "";
-  const parsed = await claude(env, [...blocks, { type: "text", text: PARSE_PROMPT + context }], PERF_SCHEMA);
+  const parsed = await claude(env, [...blocks, { type: "text", text: PARSE_PROMPT + context }], PERF_SCHEMA, 8192, "photo-group");
   await proposeIngest(env, chatId, parsed, "", blocks.map((b) => b.source.data));
 }
 
@@ -1396,7 +1469,7 @@ async function handleDocument(env, chatId, message) {
     await tg(env, "sendMessage", { chat_id: chatId, text: "Поддерживаю фото, PDF, ссылки, текст и геолокацию." });
     return;
   }
-  const parsed = await claude(env, [block, { type: "text", text: PARSE_PROMPT + context }], PERF_SCHEMA);
+  const parsed = await claude(env, [block, { type: "text", text: PARSE_PROMPT + context }], PERF_SCHEMA, 8192, "document");
   await proposeIngest(env, chatId, parsed, "", doc.mime_type === "application/pdf" ? [] : [b64]);
 }
 
@@ -1407,7 +1480,62 @@ const HELP = `Я — бот архива «Йорик» («Я знал его…
   найду в афише (Мариинский театр, Московская консерватория, Зарядье, МАМТ, Внутри) и
   разберу программку; или подробное описание — разберу как есть
 • 📍 геолокацию из театра — угадаю, что вы сейчас смотрите
-Каждый разбор я показываю на подтверждение перед записью в архив.`;
+Каждый разбор я показываю на подтверждение перед записью в архив.
+/log — что именно произошло при последнем разборе (модель, длительность, предупреждения, статус).`;
+
+export function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** /log — «покажи, что именно случилось» при последнем разборе: источник, модель,
+ *  длительность, успех/ошибка, сработавшие gate'ы (canonicalizeXxx/gateWarnings из
+ *  bot/worker.js) и статус подтверждения — с сырым JSON в конце для отладки. Не история,
+ *  а срез последнего разбора (см. startLog/updateLog). */
+export async function handleLogCommand(env, chatId) {
+  let entry = null;
+  try {
+    const raw = await env.PENDING.get(LOG_KEY);
+    if (raw) entry = JSON.parse(raw);
+  } catch (e) { /* повреждённая запись — считаем, что записи нет */ }
+  if (!entry) {
+    await tg(env, "sendMessage", { chat_id: chatId, text: "Пока нет записей о разборе — пришлите программку." });
+    return;
+  }
+  const p = entry.finalParsed || entry.parsed;
+  const lines = [
+    "📋 <b>Последний разбор</b>",
+    `Источник: ${entry.source || "—"}`,
+    `Время: ${entry.ts || "—"}`,
+    `Модель: ${entry.model || "—"}${entry.durationMs != null ? ` · ${(entry.durationMs / 1000).toFixed(1)}с` : ""}`,
+    entry.ok === false ? `Результат: ⚠️ ошибка — ${escapeHtml(entry.error || "неизвестная ошибка")}` : "Результат: ✅ разбор успешен",
+  ];
+  if (p) {
+    lines.push(
+      "",
+      `Название: ${escapeHtml(p.title || "—")}`,
+      `Театр: ${escapeHtml(p.theatre || "—")}${p.scene ? " · " + escapeHtml(p.scene) : ""}`,
+      `Дата: ${escapeHtml(p.date || "—")}${p.time ? " " + escapeHtml(p.time) : ""}`,
+    );
+  }
+  if ((entry.gateWarnings || []).length) {
+    lines.push("", "⚠️ <b>Предупреждения:</b>", ...entry.gateWarnings.map((w) => `• ${escapeHtml(w)}`));
+  }
+  if ((entry.canonicalizations || []).length) {
+    lines.push("", "🔗 <b>Приведено к канонической форме:</b>",
+      ...entry.canonicalizations.map((c) => `• [${escapeHtml(c.kind)}] ${escapeHtml(c.from)} → ${escapeHtml(c.to)}`));
+  }
+  lines.push(
+    "",
+    entry.committed
+      ? `Статус: ✅ добавлено в архив${entry.commitMessage ? ` (${escapeHtml(entry.commitMessage)})` : ""}`
+      : "Статус: ещё не подтверждено (пока не в архиве)",
+  );
+  if ((entry.files || []).length) lines.push(`Файлы: ${entry.files.map(escapeHtml).join(", ")}`);
+  if (p) {
+    lines.push("", "<b>Сырой JSON (для отладки):</b>", `<pre>${escapeHtml(JSON.stringify(p, null, 1)).slice(0, 2000)}</pre>`);
+  }
+  await tg(env, "sendMessage", { chat_id: chatId, text: lines.join("\n"), parse_mode: "HTML" });
+}
 
 /** ALLOWED_CHAT_IDS — список Telegram user id через запятую; несколько доверенных
  *  аккаунтов (например, супруг(а) и второй личный аккаунт) пишут в один и тот же архив. */
@@ -1456,10 +1584,14 @@ async function handleUpdate(env, ctx, update) {
     else if (message.document) await handleDocument(env, chatId, message);
     else if (message.text && /^\/(start|help)/.test(message.text)) {
       await tg(env, "sendMessage", { chat_id: chatId, text: HELP });
+    } else if (message.text && /^\/log/.test(message.text)) {
+      await handleLogCommand(env, chatId);
     } else if (message.text && /https?:\/\//.test(message.text)) {
       const url = message.text.match(/https?:\/\/\S+/)[0];
       await tg(env, "sendMessage", { chat_id: chatId, text: "🔗 Разбираю страницу…" });
       await handleUrl(env, chatId, url);
+    } else if (message.text && await handleVenueReply(env, chatId, message.text)) {
+      // обработано внутри handleVenueReply — ждали ответ на askForVenue() для этого чата
     } else if (message.text) {
       await handleFreeText(env, chatId, message.text);
     }
