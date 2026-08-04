@@ -1047,7 +1047,48 @@ export async function handleVenueReply(env, chatId, venueText) {
   return true;
 }
 
-async function proposeIngest(env, chatId, parsed, sourceUrl, photos) {
+/** Тот же показ иногда присылают дважды (перепутали фото, повторно нажали) — 2023-01-20
+ *  «Солисты оркестра musicAeterna»/«Камерный концерт» оказались одной и той же записью в
+ *  Дом Радио, добавленной дважды за день до этого. Сигнал — совпадение Даты в уже
+ *  опубликованном индексе; сам по себе он не абсолютный (утренник+вечер в один день —
+ *  редкий, но настоящий случай), поэтому это ВОПРОС оператору (askDuplicateConfirm), а не
+ *  автоматический отказ — как и с пустым Театром, риск ложного молчаливого пропуска хуже
+ *  риска лишнего вопроса. */
+export function findDuplicateCandidates(index, parsed) {
+  const perfs = (index && index.performances) || [];
+  return perfs.filter((p) => p.date === parsed.date);
+}
+
+export async function askDuplicateConfirm(env, chatId, parsed, sourceUrl, photos, dupes) {
+  const key = crypto.randomUUID();
+  await env.PENDING.put(key, JSON.stringify({ parsed, sourceUrl, photos: photos || [] }), { expirationTtl: 3600 });
+  const list = dupes.map((d) => `«${d.title}» (${d.theatre}${d.scene ? " · " + d.scene : ""})`).join(", ");
+  await tg(env, "sendMessage", {
+    chat_id: chatId,
+    text: `⚠️ На ${parsed.date} в архиве уже есть: ${list}. Это тот же показ (повторно прислали), или другое событие в тот же день?`,
+    reply_markup: { inline_keyboard: [[
+      { text: "➕ Это другое, добавить", callback_data: `d:${key}` },
+      { text: "❌ Дубликат, не добавлять", callback_data: `x:${key}` },
+    ]] },
+  });
+}
+
+/** «➕ Это другое, добавить» — повторный вызов proposeIngest с skipDuplicateCheck=true, чтобы
+ *  не зациклиться на том же предупреждении. */
+export async function confirmDuplicateAnyway(env, cb) {
+  const key = cb.data.slice(2);
+  const raw = await env.PENDING.get(key);
+  if (!raw) {
+    await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Устарело — пришлите ещё раз" });
+    return;
+  }
+  await env.PENDING.delete(key);
+  await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Добавляю…" });
+  const { parsed, sourceUrl, photos } = JSON.parse(raw);
+  await proposeIngest(env, cb.message.chat.id, parsed, sourceUrl, photos, true);
+}
+
+async function proposeIngest(env, chatId, parsed, sourceUrl, photos, skipDuplicateCheck) {
   if (!parsed.title || !parsed.date) {
     await tg(env, "sendMessage", { chat_id: chatId, text: "Не удалось распознать название или дату — уточните текстом, пожалуйста." });
     return;
@@ -1056,30 +1097,45 @@ async function proposeIngest(env, chatId, parsed, sourceUrl, photos) {
     await askForVenue(env, chatId, parsed, sourceUrl, photos);
     return;
   }
+
+  let index = null;
+  try {
+    index = await (await fetch(`${env.SITE_URL}/data/index.json`, { cf: { cacheTtl: 60 } })).json();
+  } catch (e) { /* индекс ещё не опубликован — не критично, продолжаем без него */ }
+
+  if (!skipDuplicateCheck && index) {
+    const dupes = findDuplicateCandidates(index, parsed);
+    if (dupes.length) {
+      await askDuplicateConfirm(env, chatId, parsed, sourceUrl, photos, dupes);
+      return;
+    }
+  }
+
   const warnings = gateWarnings(parsed);
   let known = [];
   let workNotes = [];
   let participantNotes = [];
   let changes = [];
-  try {
-    const index = await (await fetch(`${env.SITE_URL}/data/index.json`, { cf: { cacheTtl: 60 } })).json();
-    const theatreChange = canonicalizeTheatre(index, parsed);
-    changes = [
-      ...canonicalizeWorkTitles(index, parsed),
-      ...(theatreChange ? [theatreChange] : []),
-      ...canonicalizeAuthorNames(index, parsed),
-    ];
-    known = knownPeopleLines(index, peopleOf(parsed));
-    const undocumented = undocumentedWorks(index, worksOf(parsed));
-    if (undocumented.length) workNotes = await draftWorkNotes(env, undocumented);
+  if (index) {
+    try {
+      const theatreChange = canonicalizeTheatre(index, parsed);
+      changes = [
+        ...canonicalizeWorkTitles(index, parsed),
+        ...(theatreChange ? [theatreChange] : []),
+        ...canonicalizeAuthorNames(index, parsed),
+      ];
+      known = knownPeopleLines(index, peopleOf(parsed));
+      const undocumented = undocumentedWorks(index, worksOf(parsed));
+      if (undocumented.length) workNotes = await draftWorkNotes(env, undocumented);
 
-    const entries = [
-      ...undocumentedParticipants(index, authorsOf(parsed)).map((name) => ({ kind: "автор", name })),
-      ...undocumentedParticipants(index, collectivesOf(parsed)).map((name) => ({ kind: "коллектив", name })),
-      ...(parsed.theatre && !index.venues?.[parsed.theatre]?.documented ? [{ kind: "театр", name: parsed.theatre }] : []),
-    ];
-    if (entries.length) participantNotes = await draftParticipantNotes(env, entries);
-  } catch (e) { /* индекс ещё не опубликован, или черновик описаний не удался — не критично */ }
+      const entries = [
+        ...undocumentedParticipants(index, authorsOf(parsed)).map((name) => ({ kind: "автор", name })),
+        ...undocumentedParticipants(index, collectivesOf(parsed)).map((name) => ({ kind: "коллектив", name })),
+        ...(parsed.theatre && !index.venues?.[parsed.theatre]?.documented ? [{ kind: "театр", name: parsed.theatre }] : []),
+      ];
+      if (entries.length) participantNotes = await draftParticipantNotes(env, entries);
+    } catch (e) { /* черновик описаний не удался — не критично */ }
+  }
 
   await updateLog(env, { gateWarnings: warnings, canonicalizations: changes, finalParsed: parsed });
 
@@ -1555,6 +1611,7 @@ async function handleUpdate(env, ctx, update) {
       if (cb.data.startsWith("c:")) await confirmIngest(env, cb);
       else if (cb.data.startsWith("p:")) await confirmPick(env, cb);
       else if (cb.data.startsWith("g:")) await parsePhotoGroup(env, cb);
+      else if (cb.data.startsWith("d:")) await confirmDuplicateAnyway(env, cb);
       else if (cb.data.startsWith("x:")) {
         await env.PENDING.delete(cb.data.slice(2));
         await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Отменено" });
