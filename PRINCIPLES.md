@@ -172,6 +172,35 @@ deliberate future extension, not a silent workaround.
 
 ---
 
+## P-verify-photo-before-write
+
+**Rule:** Before a photo URL is written into a `people/<slug>.md` profile's **Фото** field, the
+actual downloaded image must be looked at (not just its URL/filename/proximity to the person's
+name in source HTML) and confirmed to be a plausible portrait of that specific person. An image
+found on a page that mentions the person, or in a filename that looks personal, is not evidence
+it depicts them.
+
+**Why:** During this session's photo backfill, a profile-page image for «Анна Озерская» (found
+at her own `daily.afisha.ru/person/...` URL) turned out, only on visual inspection, to be an
+unrelated performance still (two dancers on rocks) — the page's only image happened to be
+attached to a news item about someone else's film-ballet, not a portrait of her. It would have
+been written into her profile as `Фото:` with no way to tell it was wrong just from the URL or
+the fetch tool's text description of the page.
+
+**How to apply:** After downloading/cropping a candidate photo (`helpers/fetch_person_photo.py`
+or equivalent), view the resulting thumbnail before writing the `Фото:` field or committing.
+If it isn't a recognizable portrait of the named person, discard it and record the miss (source
+tried, why rejected) in the profile's `## History` rather than silently omitting the attempt.
+Applies to human research passes and to any future automated photo-sourcing — a WebFetch text
+summary describing "a profile photo" is not a substitute for actually looking at the image.
+
+**Known exceptions:** none.
+
+*(Ratified 2026-08-08 by the operator, during the recurring-people photo-and-bio backfill
+session.)*
+
+---
+
 ## P-viewer-prefs-are-client-side
 
 **Rule:** A setting that changes only how existing facts are *displayed* to a particular viewer

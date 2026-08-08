@@ -14,3 +14,4 @@
 ## History
 
 - 2026-08-08 — создано при обогащении данных (sessions/2026-08-08_recurring-people-autoenrich.md); фото не загружено — исходящий доступ в этой рабочей сессии ограничен политикой окружения
+- 2026-08-08 — перепроверено (sessions/2026-08-08_recurring-people-photo-and-bio-backfill.md): bolshoi.ru по-прежнему недостижим; chamberopera.ru/artisty/artisty-basy/anatolij-zaharov отдаёт 522 (сайт недоступен, не проксёй) — фото остаётся не найденным
