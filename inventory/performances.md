@@ -7,6 +7,7 @@
 |------|----------|---------------|------|
 | 2026-07-07 | Бенвенуто Челлини | Мариинский театр / Мариинский-2 | [items/2026-07-07_mariinsky_benvenuto-chellini.md](../items/2026-07-07_mariinsky_benvenuto-chellini.md) |
 | 2026-07-06 | Лакме | Мариинский театр / Концертный зал | [items/2026-07-06_mariinsky_lakme.md](../items/2026-07-06_mariinsky_lakme.md) |
+| 2026-02-08 | Шнитке | Концертный зал "Зарядье" / Большой зал | [items/2026-02-08_zaryadye_shnitke.md](../items/2026-02-08_zaryadye_shnitke.md) |
 | 2025-12-15 | Турандот | Мариинский театр / Концертный зал | [items/2025-12-15_mariinsky_turandot.md](../items/2025-12-15_mariinsky_turandot.md) |
 | 2025-12-14 | Севильский цирюльник | Мариинский театр / Мариинский-2 | [items/2025-12-14_mariinsky_sevilskii-tsiryulnik.md](../items/2025-12-14_mariinsky_sevilskii-tsiryulnik.md) |
 | 2025-12-13 | Волшебная флейта | Мариинский театр / Мариинский-2 | [items/2025-12-13_mariinsky_volshebnaya-fleita.md](../items/2025-12-13_mariinsky_volshebnaya-fleita.md) |
