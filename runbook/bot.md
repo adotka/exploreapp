@@ -26,12 +26,23 @@ database.
 - **Author/collective/venue descriptions.** Same mechanism as compositions (`authorsOf()` /
   `collectivesOf()` in `bot/worker.js`), but for the author(s) of the piece, any credited
   orchestra/choir/ensemble (role exactly `Оркестр`/`Хор`/`Ансамбль`), and the venue itself if
-  not yet in `inventory/venues.md`. Unlike ordinary recurring cast/crew (see below), these are
-  drafted and proposed on the **first** sighting, per `people/_template.md`'s standing exception
-  for authors/collectives (per P-shared-facts-own-entity). Shown as `👤 Новые участники…` in the
-  same confirmation message; venue descriptions are inserted under the matching `##` heading in
-  `inventory/venues.md` (or appended as a new heading with address/coordinates left for manual
-  follow-up) — coordinates are never bot-guessed.
+  not yet in `inventory/venues.md`. These are drafted and proposed on the **first** sighting, per
+  `people/_template.md`'s standing exception for authors/collectives (per
+  P-shared-facts-own-entity). Shown as `👤 Новые участники…` in the same confirmation message;
+  venue descriptions are inserted under the matching `##` heading in `inventory/venues.md` (or
+  appended as a new heading with address/coordinates left for manual follow-up) — coordinates
+  are never bot-guessed.
+- **Newly-recurring ordinary participants.** Same mechanism again (`newlyRecurringParticipants()`
+  in `bot/worker.js`), for ordinary cast/crew (not authors/collectives, handled above): on
+  confirm, anyone whose (pre-rebuild) index shows exactly one prior appearance — i.e. the
+  showing being confirmed is their *second* — gets a `people/<slug>.md` drafted the same way as
+  authors/collectives: shown in the same `👤 Новые участники…` preview, committed only on ✅. The
+  bot leaves `Фото:` empty — it has no photo-sourcing capability — and the description empty
+  (dropping the entry silently, same as for authors/collectives) if Claude isn't confident about
+  an unfamiliar/ordinary name, per the "never fabricate" instruction in `PARTICIPANT_NOTES_PROMPT`.
+  A human session can add a photo (and correct/expand the text) later, per the sourcing
+  convention in `sessions/2026-07-27_people-enrichment.md`, but doesn't have to — the archive no
+  longer depends on a manual pass to get *some* profile written for a repeat participant.
 - Multiple trusted Telegram accounts can be allowed at once (`ALLOWED_CHAT_IDS` in
   `wrangler.toml`, comma-separated) — e.g. the operator plus a spouse plus a second personal
   account. Every allowed account writes into the **same single dataset** (one repo, one
@@ -100,8 +111,9 @@ No webhook, KV, or secret changes needed — the allowlist is the only thing tha
   fix `items/<file>.md` in the next session and note it in that session's log.
 - **Newly-recurring people:** on confirm, the bot checks the (pre-rebuild) index for each
   *ordinary* person in the item (cast/crew, not authors/collectives — those are handled above);
-  anyone who had exactly one prior appearance gets flagged in the confirmation message ("👤
-  Впервые повторно: ..."). The bot only notifies for these — it never writes a
-  `people/<slug>.md` profile itself (that's research work, done in a human session per
-  `people/_template.md`; see `sessions/2026-07-27_people-enrichment.md` for the sourcing
-  approach: prefer the venue's own official artist pages, small ID-only photo thumbnails).
+  anyone who had exactly one prior appearance gets a `people/<slug>.md` drafted and committed in
+  the same commit (see "Newly-recurring ordinary participants" above) — text description only,
+  `Фото:` left empty. A human session can still add/correct a photo or bio text later per
+  `sessions/2026-07-27_people-enrichment.md`'s sourcing approach (prefer the venue's own official
+  artist pages, small ID-only photo thumbnails), but the bot no longer depends on that session to
+  get a first profile written.
