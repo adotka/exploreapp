@@ -18,6 +18,7 @@
 | 2025-01-05 | Ростовское действо | Большой театр / Камерная сцена им. Б. А. Покровского | [items/2025-01-05_bolshoi-teatr_rostovskoe-deistvo.md](../items/2025-01-05_bolshoi-teatr_rostovskoe-deistvo.md) |
 | 2024-12-31 | Свадьба Фигаро | Концертный зал "Зарядье" / Большой зал | [items/2024-12-31_zaryadye_svadba-figaro.md](../items/2024-12-31_zaryadye_svadba-figaro.md) |
 | 2024-12-08 | okho – физическая драма | Концертный зал "Зарядье" / Большой зал | [items/2024-12-08_zaryadye_okho-fizicheskaya-drama.md](../items/2024-12-08_zaryadye_okho-fizicheskaya-drama.md) |
+| 2024-11-15 | Летучий голландец | Концертный зал "Зарядье" / Большой зал | [items/2024-11-15_zaryadye_letuchii-gollandets.md](../items/2024-11-15_zaryadye_letuchii-gollandets.md) |
 | 2024-10-13 | Чайковский. «Ромео и Джульетта» Прокофьев. Фрагменты из музыки балета «Золушка» Шостакович. Симфония № 6 | Мариинский театр / Концертный зал | [items/2024-10-13_mariinsky_chaikovskii-romeo-i-dzhuletta-prokofev-fragmenty-iz-muzyki-baleta-zolushka-shostakovich-simfoniya-6.md](../items/2024-10-13_mariinsky_chaikovskii-romeo-i-dzhuletta-prokofev-fragmenty-iz-muzyki-baleta-zolushka-shostakovich-simfoniya-6.md) |
 | 2024-10-12 | Парсифаль | Мариинский театр / Историческая сцена | [items/2024-10-12_mariinsky_parsifal.md](../items/2024-10-12_mariinsky_parsifal.md) |
 | 2024-10-11 | Чародейка | Мариинский театр / Мариинский-2 | [items/2024-10-11_mariinsky_charodeika.md](../items/2024-10-11_mariinsky_charodeika.md) |
