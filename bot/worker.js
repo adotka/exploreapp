@@ -12,8 +12,12 @@
  * сюжетом) и показывает его в предпросмотре — коммитится только вместе с
  * остальным, по той же кнопке подтверждения (см. worksOf/draftWorkNotes/
  * renderWork и authorsOf/collectivesOf/draftParticipantNotes/renderParticipant/
- * insertVenueDescription). Push в main автоматически пересобирает сайт
- * (GitHub Actions → Pages).
+ * insertVenueDescription). Тем же механизмом драфтится профиль обычного
+ * участника (не автора/коллектива), для которого текущий показ — вторая
+ * встреча (см. newlyRecurringParticipants) — текст описания, без фото (бот не
+ * умеет искать/скачивать фото; остаётся пустым полем на будущее ручное
+ * дополнение). Push в main автоматически пересобирает сайт (GitHub Actions →
+ * Pages).
  *
  * Secrets (wrangler secret put): TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
  *   ANTHROPIC_API_KEY, GITHUB_TOKEN (fine-grained PAT, contents RW на репо).
@@ -827,6 +831,23 @@ export function undocumentedParticipants(index, names) {
   });
 }
 
+/** Обычные участники (не автор/не коллектив — те заводятся всегда, см. authorsOf/
+ *  collectivesOf) без people/<slug>.md, для которых текущий показ становится ВТОРОЙ
+ *  встречей (в опубликованном индексе — ровно одна запись до этого показа). Единственная
+ *  встреча плохо предсказывает, встретится ли человек снова — профиль заводится с
+ *  повторной, не с первой (в отличие от авторов/коллективов). excludeNames — имена,
+ *  уже обрабатываемые как автор/коллектив в этом же разборе (не дублировать черновик). */
+export function newlyRecurringParticipants(index, parsed, excludeNames) {
+  const profiled = new Set(index.profiled_people || []);
+  const exclude = new Set(excludeNames || []);
+  const seen = new Set();
+  return peopleOf(parsed).filter((name) => {
+    if (seen.has(name) || exclude.has(name) || profiled.has(name)) return false;
+    seen.add(name);
+    return (index.people?.[name]?.length || 0) === 1;
+  });
+}
+
 const PARTICIPANT_NOTES_SCHEMA = {
   type: "object", additionalProperties: false,
   required: ["entries"],
@@ -847,8 +868,12 @@ const PARTICIPANT_NOTES_PROMPT = `Для каждой позиции ниже (�
 - [автор]: композитор/драматург — кто это, эпоха, чем известен.
 - [коллектив]: оркестр/хор/ансамбль — что это за коллектив, при каком театре/учреждении.
 - [театр]: концертный зал/театр — что это за площадка, где находится, чем примечательна.
+- [участник]: исполнитель/постановщик (певец, дирижёр, режиссёр и т.п.) — кто это, амплуа или
+  специализация, при каком театре/коллективе, известные партии/постановки, если есть надёжно
+  установленные общедоступные сведения.
 Используй только общеизвестные, надёжно установленные факты. Если ты не уверен (незнакомое
-имя, неоднозначная атрибуция) — верни пустую строку для description, НИЧЕГО не выдумывай.
+имя, неоднозначная атрибуция, обычный человек без публичной биографии) — верни пустую строку
+для description, НИЧЕГО не выдумывай.
 Верни ровно столько объектов, сколько позиций в списке, В ТОМ ЖЕ порядке; поле name — скопируй
 точно как дано.
 
@@ -1193,9 +1218,12 @@ async function proposeIngest(env, chatId, parsed, sourceUrl, photos, skipDuplica
       const undocumented = undocumentedWorks(index, worksOf(parsed));
       if (undocumented.length) workNotes = await draftWorkNotes(env, undocumented);
 
+      const authorNames = authorsOf(parsed);
+      const collectiveNames = collectivesOf(parsed);
       const entries = [
-        ...undocumentedParticipants(index, authorsOf(parsed)).map((name) => ({ kind: "автор", name })),
-        ...undocumentedParticipants(index, collectivesOf(parsed)).map((name) => ({ kind: "коллектив", name })),
+        ...undocumentedParticipants(index, authorNames).map((name) => ({ kind: "автор", name })),
+        ...undocumentedParticipants(index, collectiveNames).map((name) => ({ kind: "коллектив", name })),
+        ...newlyRecurringParticipants(index, parsed, [...authorNames, ...collectiveNames]).map((name) => ({ kind: "участник", name })),
         ...(parsed.theatre && !index.venues?.[parsed.theatre]?.documented ? [{ kind: "театр", name: parsed.theatre }] : []),
       ];
       if (entries.length) participantNotes = await draftParticipantNotes(env, entries);
@@ -1264,26 +1292,19 @@ async function confirmIngest(env, cb) {
   await updateLog(env, { committed: true, files: files.map((f) => f.path), commitMessage: `bot: ingest ${p.title} (${p.date})` });
   await tg(env, "answerCallbackQuery", { callback_query_id: cb.id, text: "Добавлено ✅" });
 
+  // Newly-recurring ordinary participants already got a drafted people/<slug>.md profile
+  // above (part of newParticipants, via newlyRecurringParticipants in proposeIngest) — no
+  // separate post-commit flag needed; `preview()` below already lists them under "Новые
+  // участники" alongside authors/collectives/venues.
   let known = [];
-  let newlyRecurring = [];
   try {
     const index = await (await fetch(`${env.SITE_URL}/data/index.json`, { cf: { cacheTtl: 60 } })).json();
     known = knownPeopleLines(index, peopleOf(p));
-    // Индекс отражает состояние ДО этого коммита — ровно 1 запись значит, что после
-    // добавления текущего спектакля человек станет повторным впервые. Авторы/коллективы
-    // исключены — им профиль уже написан этим же коммитом (newParticipants выше), не нужно
-    // просить оператора собрать био вручную ещё раз.
-    const alreadyProfiledNow = new Set(newParticipants.map((e) => e.name));
-    newlyRecurring = peopleOf(p).filter((name) => !alreadyProfiledNow.has(name) && (index.people?.[name]?.length || 0) === 1);
   } catch (e) { /* индекс ещё не опубликован — не критично */ }
-
-  const recurringNote = newlyRecurring.length
-    ? `\n\n👤 Впервые повторно: ${newlyRecurring.join(", ")} — стоит собрать био/фото (см. people/_template.md).`
-    : "";
 
   await tg(env, "editMessageText", {
     chat_id: cb.message.chat.id, message_id: cb.message.message_id,
-    text: preview(p, known, workNotes, participantNotes) + `\n\n✅ Добавлено в архив. Сайт пересоберётся через ~1 мин: ${env.SITE_URL}/` + recurringNote,
+    text: preview(p, known, workNotes, participantNotes) + `\n\n✅ Добавлено в архив. Сайт пересоберётся через ~1 мин: ${env.SITE_URL}/`,
     parse_mode: "HTML",
   });
 }

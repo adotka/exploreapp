@@ -137,6 +137,41 @@ history) arises, apply the same resolution rather than re-deriving it.
 
 ---
 
+## P-name-collision-blocks-profile
+
+**Rule:** `people/`'s identity model matches by exact printed name string (per
+P-shared-facts-own-entity). When a name is found to be shared by **two or more distinct real
+people** — not the same person spelled two ways — no `people/<slug>.md` profile is written for
+that name, by bot or by human, until the collision is disambiguated. A single shared-name file
+would silently merge two real people's facts (bio, photo, roles) into one record with no way to
+tell them apart later.
+
+**Why:** This session's enrichment batch hit two real collisions: «Алексей Смирнов» resolved to
+two different Bolshoi Theatre professionals (a singer and a stage director), and a Mariinsky
+roster lists two different people both as «Виталий Янковский» (the site itself disambiguates
+them internally; playbill credits don't). Neither is resolvable from the credited role text
+alone. The bot now auto-drafts `people/` profiles for newly-recurring participants unattended
+(this session's other change) and has no way to detect a collision — it will happily write one
+merged profile under a shared name unless this is a standing rule, not just a one-off judgment
+call made by whoever happens to notice.
+
+**How to apply:** Before writing a profile (human research pass or automated draft), treat a
+name match against ambiguous/conflicting biographical details (different roles, different
+theatres/companies, inconsistent training history across sources) as a signal of a possible
+collision, not a single messy bio — verify against a primary source before concluding it's one
+person. If a collision is confirmed or can't be ruled out, leave the name unprofiled and record
+the collision (e.g. in the session's Open Items) rather than guessing or merging. The bot itself
+has no collision-detection today — this is a human-side safeguard until/unless the bot gains one
+kb/inventory of known-ambiguous names to check against.
+
+**Known exceptions:** none. `people/*.md` currently has no disambiguation mechanism (e.g. a
+suffixed `Имя`) — if a collision needs to be resolved rather than just left unprofiled, that's a
+deliberate future extension, not a silent workaround.
+
+*(Ratified 2026-08-08 by the operator, during the recurring-people auto-enrichment session.)*
+
+---
+
 ## P-viewer-prefs-are-client-side
 
 **Rule:** A setting that changes only how existing facts are *displayed* to a particular viewer
