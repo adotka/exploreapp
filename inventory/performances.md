@@ -12,6 +12,7 @@
 | 2025-12-13 | Волшебная флейта | Мариинский театр / Мариинский-2 | [items/2025-12-13_mariinsky_volshebnaya-fleita.md](../items/2025-12-13_mariinsky_volshebnaya-fleita.md) |
 | 2025-02-09 | Аида | Мариинский театр / Мариинский-2 | [items/2025-02-09_mariinsky_aida.md](../items/2025-02-09_mariinsky_aida.md) |
 | 2025-02-08 | Король шахмат | Мариинский театр / Концертный зал | [items/2025-02-08_mariinsky_korol-shahmat.md](../items/2025-02-08_mariinsky_korol-shahmat.md) |
+| 2025-01-29 | «Стоящие на ветру» | Московская консерватория / Рахманиновский зал | [items/2025-01-29_consv_stoyaschie-na-vetru.md](../items/2025-01-29_consv_stoyaschie-na-vetru.md) |
 | 2025-01-23 | Нос | Большой театр / Камерная сцена им. Б. А. Покровского | [items/2025-01-23_bolshoi-teatr_nos.md](../items/2025-01-23_bolshoi-teatr_nos.md) |
 | 2025-01-06 | Best of Piazzolla | Концертный зал "Зарядье" / Большой зал | [items/2025-01-06_zaryadye_best-of-piazzolla.md](../items/2025-01-06_zaryadye_best-of-piazzolla.md) |
 | 2025-01-05 | Ростовское действо | Большой театр / Камерная сцена им. Б. А. Покровского | [items/2025-01-05_bolshoi-teatr_rostovskoe-deistvo.md](../items/2025-01-05_bolshoi-teatr_rostovskoe-deistvo.md) |
