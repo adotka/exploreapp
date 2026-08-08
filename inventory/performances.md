@@ -26,6 +26,7 @@
 | 2024-06-23 | Симона Кермес, сопрано. Оркестр Pratum Integrum | Мариинский театр / Концертный зал | [items/2024-06-23_mariinsky_simona-kermes-soprano-orkestr-pratum-integrum.md](../items/2024-06-23_mariinsky_simona-kermes-soprano-orkestr-pratum-integrum.md) |
 | 2024-05-15 | Концертная программа | Концертный зал "Зарядье" / Большой зал | [items/2024-05-15_zaryadye_kontsertnaya-programma.md](../items/2024-05-15_zaryadye_kontsertnaya-programma.md) |
 | 2024-04-17 | Золушка | Мариинский театр / Историческая сцена | [items/2024-04-17_mariinsky_zolushka.md](../items/2024-04-17_mariinsky_zolushka.md) |
+| 2024-04-14 | Риголетто | Новая опера /  | [items/2024-04-14_novaya-opera_rigoletto.md](../items/2024-04-14_novaya-opera_rigoletto.md) |
 | 2023-12-17 | Тристан и Изольда | Новая опера /  | [items/2023-12-17_novaya-opera_tristan-i-izolda.md](../items/2023-12-17_novaya-opera_tristan-i-izolda.md) |
 | 2023-08-09 | Ашера | Кинотеатр "Октябрь" /  | [items/2023-08-09_kinoteatr-oktyabr_ashera.md](../items/2023-08-09_kinoteatr-oktyabr_ashera.md) |
 | 2023-05-20 | Похищение из сераля | Мариинский театр / Историческая сцена | [items/2023-05-20_mariinsky_pohischenie-iz-seralya.md](../items/2023-05-20_mariinsky_pohischenie-iz-seralya.md) |
