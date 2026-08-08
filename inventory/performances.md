@@ -10,6 +10,7 @@
 | 2025-12-15 | Турандот | Мариинский театр / Концертный зал | [items/2025-12-15_mariinsky_turandot.md](../items/2025-12-15_mariinsky_turandot.md) |
 | 2025-12-14 | Севильский цирюльник | Мариинский театр / Мариинский-2 | [items/2025-12-14_mariinsky_sevilskii-tsiryulnik.md](../items/2025-12-14_mariinsky_sevilskii-tsiryulnik.md) |
 | 2025-12-13 | Волшебная флейта | Мариинский театр / Мариинский-2 | [items/2025-12-13_mariinsky_volshebnaya-fleita.md](../items/2025-12-13_mariinsky_volshebnaya-fleita.md) |
+| 2025-04-13 | Катерина Измайлова | Большой театр / Историческая сцена | [items/2025-04-13_bolshoi-teatr_katerina-izmailova.md](../items/2025-04-13_bolshoi-teatr_katerina-izmailova.md) |
 | 2025-03-26 | Тристан и Изольда | Концертный зал "Зарядье" / Большой зал | [items/2025-03-26_zaryadye_tristan-i-izolda.md](../items/2025-03-26_zaryadye_tristan-i-izolda.md) |
 | 2025-03-19 | Шопен. Фортепианные концерты | Концертный зал "Зарядье" / Большой зал | [items/2025-03-19_zaryadye_shopen-fortepiannye-kontserty.md](../items/2025-03-19_zaryadye_shopen-fortepiannye-kontserty.md) |
 | 2025-02-27 | Бах, Канчели, Шостакович | Концертный зал "Зарядье" / Большой зал | [items/2025-02-27_zaryadye_bah-kancheli-shostakovich.md](../items/2025-02-27_zaryadye_bah-kancheli-shostakovich.md) |
