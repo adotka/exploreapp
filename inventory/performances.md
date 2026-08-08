@@ -10,6 +10,7 @@
 | 2025-12-15 | Турандот | Мариинский театр / Концертный зал | [items/2025-12-15_mariinsky_turandot.md](../items/2025-12-15_mariinsky_turandot.md) |
 | 2025-12-14 | Севильский цирюльник | Мариинский театр / Мариинский-2 | [items/2025-12-14_mariinsky_sevilskii-tsiryulnik.md](../items/2025-12-14_mariinsky_sevilskii-tsiryulnik.md) |
 | 2025-12-13 | Волшебная флейта | Мариинский театр / Мариинский-2 | [items/2025-12-13_mariinsky_volshebnaya-fleita.md](../items/2025-12-13_mariinsky_volshebnaya-fleita.md) |
+| 2025-12-02 | Кармен | Московский музыкальный театр имени К.С. Станиславского и Вл.И. Немировича-Данченко /  | [items/2025-12-02_mamt_karmen.md](../items/2025-12-02_mamt_karmen.md) |
 | 2025-07-14 | Сказки Гофмана | Московский музыкальный театр имени К.С. Станиславского и Вл.И. Немировича-Данченко /  | [items/2025-07-14_mamt_skazki-gofmana.md](../items/2025-07-14_mamt_skazki-gofmana.md) |
 | 2025-04-13 | Катерина Измайлова | Большой театр / Историческая сцена | [items/2025-04-13_bolshoi-teatr_katerina-izmailova.md](../items/2025-04-13_bolshoi-teatr_katerina-izmailova.md) |
 | 2025-03-26 | Тристан и Изольда | Концертный зал "Зарядье" / Большой зал | [items/2025-03-26_zaryadye_tristan-i-izolda.md](../items/2025-03-26_zaryadye_tristan-i-izolda.md) |
