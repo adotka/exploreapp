@@ -14,6 +14,7 @@
 | 2025-02-08 | Король шахмат | Мариинский театр / Концертный зал | [items/2025-02-08_mariinsky_korol-shahmat.md](../items/2025-02-08_mariinsky_korol-shahmat.md) |
 | 2025-01-23 | Нос | Большой театр / Камерная сцена им. Б. А. Покровского | [items/2025-01-23_bolshoi-teatr_nos.md](../items/2025-01-23_bolshoi-teatr_nos.md) |
 | 2025-01-06 | Best of Piazzolla | Концертный зал "Зарядье" / Большой зал | [items/2025-01-06_zaryadye_best-of-piazzolla.md](../items/2025-01-06_zaryadye_best-of-piazzolla.md) |
+| 2025-01-05 | Ростовское действо | Большой театр / Камерная сцена им. Б. А. Покровского | [items/2025-01-05_bolshoi-teatr_rostovskoe-deistvo.md](../items/2025-01-05_bolshoi-teatr_rostovskoe-deistvo.md) |
 | 2024-12-31 | Свадьба Фигаро | Концертный зал "Зарядье" / Большой зал | [items/2024-12-31_zaryadye_svadba-figaro.md](../items/2024-12-31_zaryadye_svadba-figaro.md) |
 | 2024-12-08 | okho – физическая драма | Концертный зал "Зарядье" / Большой зал | [items/2024-12-08_zaryadye_okho-fizicheskaya-drama.md](../items/2024-12-08_zaryadye_okho-fizicheskaya-drama.md) |
 | 2024-10-13 | Чайковский. «Ромео и Джульетта» Прокофьев. Фрагменты из музыки балета «Золушка» Шостакович. Симфония № 6 | Мариинский театр / Концертный зал | [items/2024-10-13_mariinsky_chaikovskii-romeo-i-dzhuletta-prokofev-fragmenty-iz-muzyki-baleta-zolushka-shostakovich-simfoniya-6.md](../items/2024-10-13_mariinsky_chaikovskii-romeo-i-dzhuletta-prokofev-fragmenty-iz-muzyki-baleta-zolushka-shostakovich-simfoniya-6.md) |
