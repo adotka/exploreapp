@@ -12,6 +12,7 @@
 | 2025-12-13 | Волшебная флейта | Мариинский театр / Мариинский-2 | [items/2025-12-13_mariinsky_volshebnaya-fleita.md](../items/2025-12-13_mariinsky_volshebnaya-fleita.md) |
 | 2025-03-26 | Тристан и Изольда | Концертный зал "Зарядье" / Большой зал | [items/2025-03-26_zaryadye_tristan-i-izolda.md](../items/2025-03-26_zaryadye_tristan-i-izolda.md) |
 | 2025-03-19 | Шопен. Фортепианные концерты | Концертный зал "Зарядье" / Большой зал | [items/2025-03-19_zaryadye_shopen-fortepiannye-kontserty.md](../items/2025-03-19_zaryadye_shopen-fortepiannye-kontserty.md) |
+| 2025-02-27 | Бах, Канчели, Шостакович | Концертный зал "Зарядье" / Большой зал | [items/2025-02-27_zaryadye_bah-kancheli-shostakovich.md](../items/2025-02-27_zaryadye_bah-kancheli-shostakovich.md) |
 | 2025-02-13 | Музыкальное приношение, BWV 1079 | ГЭС-2 / Актовый зал | [items/2025-02-13_ges-2_muzykalnoe-prinoshenie-bwv-1079.md](../items/2025-02-13_ges-2_muzykalnoe-prinoshenie-bwv-1079.md) |
 | 2025-02-09 | Аида | Мариинский театр / Мариинский-2 | [items/2025-02-09_mariinsky_aida.md](../items/2025-02-09_mariinsky_aida.md) |
 | 2025-02-08 | Король шахмат | Мариинский театр / Концертный зал | [items/2025-02-08_mariinsky_korol-shahmat.md](../items/2025-02-08_mariinsky_korol-shahmat.md) |
