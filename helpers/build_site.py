@@ -153,7 +153,9 @@ class Performance:
         return self.theatre or self.scene
 
     def people(self):
-        """(имя, роль) для всех участников, включая автора(ов)."""
+        """(имя, роль) для всех участников, включая автора(ов). Каждая пара (имя, роль)
+        встречается не больше одного раза за представление — иначе сборный концерт с N
+        произведениями одного автора в «Программе» даёт N одинаковых строк на странице автора."""
         seen = []
         if self.author:
             seen.append((clean_name(self.author), "автор"))
@@ -162,7 +164,13 @@ class Performance:
         for role, names in self.staff + self.cast:
             for name in names:
                 seen.append((name, role))
-        return seen
+        deduped = []
+        seen_pairs = set()
+        for pair in seen:
+            if pair not in seen_pairs:
+                seen_pairs.add(pair)
+                deduped.append(pair)
+        return deduped
 
 
 def clean_name(name: str) -> str:
