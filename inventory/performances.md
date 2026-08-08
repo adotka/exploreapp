@@ -10,6 +10,7 @@
 | 2025-12-15 | Турандот | Мариинский театр / Концертный зал | [items/2025-12-15_mariinsky_turandot.md](../items/2025-12-15_mariinsky_turandot.md) |
 | 2025-12-14 | Севильский цирюльник | Мариинский театр / Мариинский-2 | [items/2025-12-14_mariinsky_sevilskii-tsiryulnik.md](../items/2025-12-14_mariinsky_sevilskii-tsiryulnik.md) |
 | 2025-12-13 | Волшебная флейта | Мариинский театр / Мариинский-2 | [items/2025-12-13_mariinsky_volshebnaya-fleita.md](../items/2025-12-13_mariinsky_volshebnaya-fleita.md) |
+| 2025-03-26 | Тристан и Изольда | Концертный зал "Зарядье" / Большой зал | [items/2025-03-26_zaryadye_tristan-i-izolda.md](../items/2025-03-26_zaryadye_tristan-i-izolda.md) |
 | 2025-02-09 | Аида | Мариинский театр / Мариинский-2 | [items/2025-02-09_mariinsky_aida.md](../items/2025-02-09_mariinsky_aida.md) |
 | 2025-02-08 | Король шахмат | Мариинский театр / Концертный зал | [items/2025-02-08_mariinsky_korol-shahmat.md](../items/2025-02-08_mariinsky_korol-shahmat.md) |
 | 2025-01-29 | «Стоящие на ветру» | Московская консерватория / Рахманиновский зал | [items/2025-01-29_consv_stoyaschie-na-vetru.md](../items/2025-01-29_consv_stoyaschie-na-vetru.md) |
