@@ -27,6 +27,7 @@
 | 2024-08-02 | Валькирия | Мариинский театр / Мариинский-2 | [items/2024-08-02_mariinsky_valkiriya.md](../items/2024-08-02_mariinsky_valkiriya.md) |
 | 2024-08-01 | Золото Рейна | Мариинский театр / Мариинский-2 | [items/2024-08-01_mariinsky_zoloto-reina.md](../items/2024-08-01_mariinsky_zoloto-reina.md) |
 | 2024-06-23 | Симона Кермес, сопрано. Оркестр Pratum Integrum | Мариинский театр / Концертный зал | [items/2024-06-23_mariinsky_simona-kermes-soprano-orkestr-pratum-integrum.md](../items/2024-06-23_mariinsky_simona-kermes-soprano-orkestr-pratum-integrum.md) |
+| 2024-06-10 | Симон Бокканегра | Концертный зал "Зарядье" / Большой зал | [items/2024-06-10_zaryadye_simon-bokkanegra.md](../items/2024-06-10_zaryadye_simon-bokkanegra.md) |
 | 2024-05-15 | Концертная программа | Концертный зал "Зарядье" / Большой зал | [items/2024-05-15_zaryadye_kontsertnaya-programma.md](../items/2024-05-15_zaryadye_kontsertnaya-programma.md) |
 | 2024-04-17 | Золушка | Мариинский театр / Историческая сцена | [items/2024-04-17_mariinsky_zolushka.md](../items/2024-04-17_mariinsky_zolushka.md) |
 | 2024-04-14 | Риголетто | Новая опера /  | [items/2024-04-14_novaya-opera_rigoletto.md](../items/2024-04-14_novaya-opera_rigoletto.md) |
